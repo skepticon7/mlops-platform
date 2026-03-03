@@ -3,7 +3,8 @@ from fastapi import Request , FastAPI
 from fastapi.responses import JSONResponse
 from app.core.exceptions import (
     NotFoundException ,
-    BadRequestException
+    BadRequestException,
+    UnauthorizedException,
 )
 from fastapi.exceptions import RequestValidationError
 
@@ -23,6 +24,13 @@ def register_exception_handlers(app : FastAPI):
             content = _body(404 , exception.detail , request)
         )
 
+    @app.exception_handler(UnauthorizedException)
+    async def unauthorized_exception_handler(request: Request, exception: UnauthorizedException):
+        return JSONResponse(
+            status_code=401,
+            content=_body(401, exception.detail, request),
+            headers=exception.headers,
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request : Request , exception : RequestValidationError):
