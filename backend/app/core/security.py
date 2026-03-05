@@ -79,7 +79,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     blacklisted, or the referenced user no longer exists.
     """
     # Lazy imports to avoid circular dependencies
-    from app.models.user_model import User
+    from app.models.user import User
     from app.models.blacklisted_token_model import BlacklistedToken
 
     try:

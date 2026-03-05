@@ -16,7 +16,7 @@ class UserResponse(BaseModel):
     lastName: str
     email: EmailStr
     created_at: datetime
-    updated_at: datetime | None = None  # 👈 allow None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

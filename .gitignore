@@ -102,3 +102,7 @@ Desktop.ini
 *.pem
 *.key
 *.cert
+
+
+# datasets
+backend/app/storage/datasets/

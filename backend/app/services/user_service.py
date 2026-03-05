@@ -9,7 +9,7 @@ from beanie import PydanticObjectId
 
 from app.core.exceptions import BadRequestException, NotFoundException, UnauthorizedException
 from app.core.security import hash_password, verify_password
-from app.models.user_model import User
+from app.models.user import User
 from app.schemas.user_schema import UserCreate, UserResponse
 
 

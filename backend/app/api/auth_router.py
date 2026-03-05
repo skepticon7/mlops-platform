@@ -22,7 +22,7 @@ from app.core.security import (
     oauth2_scheme,
 )
 from app.models.blacklisted_token_model import BlacklistedToken
-from app.models.user_model import User
+from app.models.user import User
 from app.schemas.auth_schema import LoginRequest, TokenResponse
 from app.schemas.user_schema import UserResponse, UserCreate
 from app.services.user_service import (
@@ -31,7 +31,7 @@ from app.services.user_service import (
     authenticate_user,
 )
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
