@@ -17,6 +17,7 @@ class Algorithm(str, Enum):
     dbscan = "dbscan"
 
 class ModelStatus(str , Enum):
+    pending = "pending"
     training = "training"
     ready = "ready"
     failed = "failed"
@@ -28,11 +29,11 @@ class Model(Document , TimestampMixin):
     algorithm : Algorithm
     task_type : TaskType
     target_column : Optional[str] = None
-    features : Optional[List[str]] = None
+    features : List[str]
     hyperparams : Optional[Dict] = None
-    metrics : Optional[Dict] = None
-    file_path : Optional[str] = None
-    status : ModelStatus = ModelStatus.training
+    metrics : Dict
+    file_path : str
+    status : ModelStatus = ModelStatus.pending
 
     class Settings:
         name = "models"

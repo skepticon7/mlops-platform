@@ -13,6 +13,7 @@ class ColumnInfo(BaseModel):
 class Dataset(Document , TimestampMixin):
     user_id : PydanticObjectId
     name : str
+    unique_name : str
     file_path : str
     row_count : int
     columns : List[ColumnInfo]

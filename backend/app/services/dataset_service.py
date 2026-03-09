@@ -20,20 +20,18 @@ logger = logging.getLogger(__name__)
 class DatasetService:
 
     @staticmethod
-    async def upload_dataset(file: UploadFile, user : User):
-        # 1. Validate file extension
+    async def upload_dataset(file: UploadFile, user : User , session):
+
+
         if not file.filename.endswith(".csv"):
             raise BadRequestException(message="Only CSV files are supported")
 
-        # 2. Sanitize filename
         safe_filename = Path(file.filename).name
         unique_filename = f"{uuid.uuid4()}_{safe_filename}"
         file_path = DATASET_DIR / unique_filename
 
-        # 3. Ensure directory exists
         DATASET_DIR.mkdir(parents=True, exist_ok=True)
 
-        # 4. Stream file to disk with size check
         file_size = 0
         try:
             async with aiofiles.open(file_path, 'wb') as f:
@@ -52,7 +50,6 @@ class DatasetService:
             logger.error(f"File upload failed: {e}", exc_info=True)
             raise BadRequestException(message="File upload failed")
 
-        # 5. Validate CSV and extract metadata
         try:
             df = pd.read_csv(file_path)
 
@@ -77,18 +74,17 @@ class DatasetService:
                 message=f"Invalid CSV format: {str(e)[:100]}"
             )
 
-        # 6. Create dataset record
         dataset = Dataset(
             user_id=user.id,
             name=safe_filename,
+            unique_name=unique_filename,
             file_path=str(file_path),
             row_count=len(df),
             columns=columns
         )
 
-        # 7. Save to database
         try:
-            await dataset.insert()
+            await dataset.insert(session=session)
         except Exception as e:
             file_path.unlink(missing_ok=True)  # Cleanup on DB failure
             logger.error(f"Database insert failed: {e}", exc_info=True)
