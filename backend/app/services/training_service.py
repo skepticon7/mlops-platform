@@ -9,6 +9,8 @@ from app.services.model_service import ModelService
 from app.db.database import get_client
 import logging
 
+from app.tasks.training_tasks import train_model_task, train_model_async
+
 logger = logging.getLogger(__name__)
 
 class TrainingService:
@@ -20,38 +22,24 @@ class TrainingService:
 
         client = get_client()
 
-
-
         try:
 
             async with await client.start_session() as session:
                 async with session.start_transaction():
                     logger.info(f"Creating dataset for {file.filename}")
-
-                    dataset = await DatasetService.upload_dataset(file , user , session=session)
+                    dataset = await DatasetService.upload_dataset(file, user, session=session)
 
                     logger.info(f"Creating model for {model_data.name}")
+                    model = await ModelService.create_model(dataset.id, model_data, user, session=session)
 
-                    model = await ModelService.create_model(dataset.id , model_data , user , session=session)
+                    train_model_task.delay(str(model.id))
 
-                    return ModelResponse(
-                        id=str(model.id),
-                        dataset_id=str(model.dataset_id),
-                        user_id=str(model.user_id),
-                        name=model.name,
-                        algorithm=model.algorithm,
-                        task_type=model.task_type,
-                        features=model.features,
-                        target_column=model.target_column,
-                        hyperparams=model.hyperparams,
-                        file_path=model.file_path,
-                        metrics=model.metrics,
-                        status=model.status,
-                        created_at=model.created_at,
-                        updated_at=model.updated_at,
-                    )
+                    return {
+                        "dataset_id": str(model.dataset_id),g
+                        "model_id": str(model.id)
+                    }
         except Exception as e:
-            logger.error(f"error saving dataset in model : {e}")
+            logger.error(f"error training model : {e}")
             if dataset and dataset.file_path:
                 try:
                     logger.info(f"unlinking dataset for {file.filename}")

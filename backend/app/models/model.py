@@ -14,12 +14,12 @@ class Algorithm(str, Enum):
     linear_regression = "linear_regression"
     logistic_regression = "logistic_regression"
     kmeans = "kmeans"
-    dbscan = "dbscan"
+    pca = "pca"
 
 class ModelStatus(str , Enum):
     pending = "pending"
     training = "training"
-    ready = "ready"
+    completed = "completed"
     failed = "failed"
 
 class Model(Document , TimestampMixin):

@@ -6,8 +6,9 @@ from app.db.database import init_db , shutdown_db
 
 celery_app = Celery(
     'mlops_studio',
-    broker='memory://',
-    backend='rpc://',
+    broker='redis://localhost:6379/0',
+    backend='redis://localhost:6379/1',
+    include=['app.tasks.training_tasks']
 )
 
 celery_app.conf.update(
