@@ -13,15 +13,15 @@ from beanie import init_beanie, PydanticObjectId
 from app.core.celery_app import celery_app
 from app.core.config import MONGO_URI, DB_NAME
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.cluster import KMeans, DBSCAN
+from sklearn.linear_model import LinearRegression , LogisticRegression
+from sklearn.cluster import KMeans , DBSCAN
 from sklearn.decomposition import PCA
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    root_mean_squared_error, mean_squared_error, mean_absolute_error, r2_score,
-    silhouette_score, davies_bouldin_score, calinski_harabasz_score
+    accuracy_score,precision_score,recall_score,f1_score,
+    root_mean_squared_error , mean_squared_error , mean_absolute_error , r2_score,
+    silhouette_score , davies_bouldin_score , calinski_harabasz_score
 )
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder , OneHotEncoder , StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -29,7 +29,7 @@ import inspect  # Add this import
 
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.db.database import get_client
-from app.models.model import Model, ModelStatus, Algorithm, TaskType
+from app.models.model import Model , ModelStatus , Algorithm , TaskType
 from app.models.dataset import Dataset
 
 logger = logging.getLogger(__name__)
@@ -52,17 +52,17 @@ def get_valid_hyperparams(algorithm_class, hyperparams: dict | None) -> dict:
     """
     if not hyperparams:
         return {}
-
+    
     # Get valid parameter names from the algorithm's __init__ signature
     sig = inspect.signature(algorithm_class.__init__)
     valid_params = set(sig.parameters.keys()) - {'self'}
-
+    
     # Filter to only valid parameters
     filtered_params = {
-        key: value for key, value in hyperparams.items()
+        key: value for key, value in hyperparams.items() 
         if key in valid_params
     }
-
+    
     return filtered_params
 
 
