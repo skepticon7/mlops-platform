@@ -34,6 +34,7 @@ class Model(Document , TimestampMixin):
     metrics : Dict
     file_path : str
     status : ModelStatus = ModelStatus.pending
+    error_message: Optional[str] = None  # Add this field
 
     class Settings:
         name = "models"

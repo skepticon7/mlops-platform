@@ -6,9 +6,12 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
-import requests
+
+from motor.motor_asyncio import AsyncIOMotorClient
+from beanie import init_beanie, PydanticObjectId
 
 from app.core.celery_app import celery_app
+from app.core.config import MONGO_URI, DB_NAME
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression , LogisticRegression
 from sklearn.cluster import KMeans , DBSCAN
@@ -22,44 +25,75 @@ from sklearn.preprocessing import LabelEncoder , OneHotEncoder , StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+import inspect  # Add this import
 
 from app.core.exceptions import NotFoundException, BadRequestException
 from app.db.database import get_client
 from app.models.model import Model , ModelStatus , Algorithm , TaskType
 from app.models.dataset import Dataset
-from beanie import PydanticObjectId
 
 logger = logging.getLogger(__name__)
 
 ALGORITHM_MAP = {
-    Algorithm.linear_regression : LinearRegression,
-    Algorithm.logistic_regression : LogisticRegression,
-    Algorithm.kmeans : KMeans,
-    Algorithm.pca : PCA,
+    Algorithm.linear_regression: LinearRegression,
+    Algorithm.logistic_regression: LogisticRegression,
+    Algorithm.kmeans: KMeans,
+    Algorithm.pca: PCA,
 }
-
-
 
 MODEL_DIR = Path(__file__).parent.parent / "storage" / "models"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
+
+def get_valid_hyperparams(algorithm_class, hyperparams: dict | None) -> dict:
+    """
+    Filter hyperparameters to only include those valid for the given algorithm.
+    This prevents errors when algorithm and hyperparams don't match.
+    """
+    if not hyperparams:
+        return {}
+    
+    # Get valid parameter names from the algorithm's __init__ signature
+    sig = inspect.signature(algorithm_class.__init__)
+    valid_params = set(sig.parameters.keys()) - {'self'}
+    
+    # Filter to only valid parameters
+    filtered_params = {
+        key: value for key, value in hyperparams.items() 
+        if key in valid_params
+    }
+    
+    return filtered_params
+
+
+async def init_beanie_for_task():
+    """
+    Initialize a fresh Motor client and Beanie for the Celery task context.
+    This ensures the client is bound to the current event loop.
+    """
+    client = AsyncIOMotorClient(MONGO_URI)
+    await init_beanie(
+        database=client[DB_NAME],
+        document_models=[Model, Dataset]
+    )
+    return client
+
+
 @celery_app.task(bind=True, name="train_model")
 def train_model_task(self, model_id: str):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
     try:
-        result = loop.run_until_complete(train_model_async(self, model_id))
-        return result
+        return asyncio.run(train_model_async(self, model_id))
     except Exception as e:
-        loop.run_until_complete(mark_as_failed(model_id, str(e)))
+        asyncio.run(mark_as_failed(model_id, str(e)))
         raise
-    finally:
-        loop.close()
 
-async def train_model_async(task , model_id : str):
+
+async def train_model_async(task, model_id: str):
     logger.info("starting training for the model")
-    client = get_client()
+
+    # Initialize a fresh client for this event loop
+    client = await init_beanie_for_task()
+
     model_file_path = None
     try:
         async with await client.start_session() as session:
@@ -87,6 +121,37 @@ async def train_model_async(task , model_id : str):
 
         task.update_state(state="PROGRESS", meta={"progress": 20, "status": "preparing_features"})
 
+        # --- DYNAMIC FEATURE CLEANING ---
+        clean_features = []
+        dropped_dynamic_ids = []
+
+        for feature in ml_model.features:
+            # 1. Drop the target column to prevent data leakage
+            if feature == ml_model.target_column:
+                continue
+
+            # 2. Dynamically drop ID-like columns (100% unique values)
+            # We only check integer or string/object columns. We keep float columns
+            # because highly precise continuous data might naturally be unique.
+            if feature in df.columns:
+                is_all_unique = df[feature].nunique() == len(df)
+                is_int_or_str = pd.api.types.is_integer_dtype(df[feature]) or pd.api.types.is_object_dtype(df[feature])
+
+                if is_all_unique and is_int_or_str:
+                    dropped_dynamic_ids.append(feature)
+                    continue  # Skip adding to clean_features
+
+            # If it passes the checks, keep the feature
+            clean_features.append(feature)
+
+        if dropped_dynamic_ids:
+            logger.info(f"Dynamically dropped ID-like columns: {dropped_dynamic_ids}")
+
+        # Update the model document in the DB so it reflects the actual features used
+        if len(clean_features) != len(ml_model.features):
+            ml_model.features = clean_features
+        # --------------------------------
+
         X = df[ml_model.features].copy()
 
         categorical_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
@@ -96,17 +161,17 @@ async def train_model_async(task , model_id : str):
 
         if categorical_cols:
             categorical_pipeline = Pipeline([
-                ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
-                ('onehot', OneHotEncoder(drop='first', handle_unknown='ignore', sparse_output=False)),
+                ("imputer", SimpleImputer(strategy="constant", fill_value="missing")),
+                ("onehot", OneHotEncoder(drop="first", handle_unknown="ignore", sparse_output=False)),
             ])
-            transformers.append(('cat', categorical_pipeline, categorical_cols))
+            transformers.append(("cat", categorical_pipeline, categorical_cols))
 
         if numerical_cols:
             numerical_pipeline = Pipeline([
-                ('imputer', SimpleImputer(strategy='mean')),
-                ('scaler', StandardScaler()),
+                ("imputer", SimpleImputer(strategy="mean")),
+                ("scaler", StandardScaler()),
             ])
-            transformers.append(('num', numerical_pipeline, numerical_cols))
+            transformers.append(("num", numerical_pipeline, numerical_cols))
 
         preprocessor = ColumnTransformer(transformers=transformers)
 
@@ -115,12 +180,11 @@ async def train_model_async(task , model_id : str):
         algorithm_class = ALGORITHM_MAP.get(ml_model.algorithm)
 
         if ml_model.algorithm in [Algorithm.linear_regression, Algorithm.logistic_regression]:
-
             y = df[ml_model.target_column]
 
             target_encoder = None
 
-            if y.dtype == "object" or y.dtype.name == 'category':
+            if y.dtype == "object" or y.dtype.name == "category":
                 target_encoder = LabelEncoder()
                 y = target_encoder.fit_transform(y)
 
@@ -130,16 +194,11 @@ async def train_model_async(task , model_id : str):
 
             task.update_state(state="PROGRESS", meta={"progress": 40, "status": "training"})
 
-            async with await client.start_session() as session:
-                async with session.start_transaction():
-                    ml_model.status = ModelStatus.completed
-                    ml_model.updated_at = datetime.utcnow()
-                    await ml_model.save(session=session)
-
             X_train_transformed = preprocessor.fit_transform(X_train)
             X_test_transformed = preprocessor.transform(X_test)
 
-            model = algorithm_class(**ml_model.hyperparams)
+            valid_hyperparams = get_valid_hyperparams(algorithm_class, ml_model.hyperparams)
+            model = algorithm_class(**valid_hyperparams)
             model.fit(X_train_transformed, y_train)
 
             task.update_state(state="PROGRESS", meta={"progress": 70, "status": "evaluating"})
@@ -165,10 +224,11 @@ async def train_model_async(task , model_id : str):
             target_encoder = None
 
             task.update_state(state="PROGRESS", meta={"progress": 40, "status": "training"})
-            #
+
             X_transformed = preprocessor.fit_transform(X)
 
-            model = algorithm_class(**ml_model.hyperparams)
+            valid_hyperparams = get_valid_hyperparams(algorithm_class, ml_model.hyperparams)
+            model = algorithm_class(**valid_hyperparams)
 
             if ml_model.algorithm == Algorithm.kmeans:
                 labels = model.fit_predict(X_transformed)
@@ -178,12 +238,10 @@ async def train_model_async(task , model_id : str):
                 metrics = {
                     "silhouette_score": float(silhouette_score(X_transformed, labels)),
                     "davies_bouldin_score": float(davies_bouldin_score(X_transformed, labels)),
-                    "calinski_harabasz_score": float(calinski_harabasz_score(X_transformed, labels))
+                    "calinski_harabasz_score": float(calinski_harabasz_score(X_transformed, labels)),
                 }
             elif ml_model.algorithm == Algorithm.pca:
                 model.fit(X_transformed)
-
-                # task.update_state(state="PROGRESS", meta={"progress": 70, "status": "evaluating"})
 
                 explained_ratio = model.explained_variance_ratio_
 
@@ -192,7 +250,7 @@ async def train_model_async(task , model_id : str):
                     "cumulative_variance_ratio": np.cumsum(explained_ratio).tolist(),
                     "n_components": int(model.n_components_),
                     "explained_variance": model.explained_variance_.tolist(),
-                    "singular_values": model.singular_values_.tolist()
+                    "singular_values": model.singular_values_.tolist(),
                 }
 
         task.update_state(state="PROGRESS", meta={"progress": 90, "status": "saving"})
@@ -200,44 +258,48 @@ async def train_model_async(task , model_id : str):
         model_file_path = MODEL_DIR / f"{model_id}.joblib"
 
         joblib.dump({
-            "model": model,  # Trained sklearn model
-            "preprocessor": preprocessor,  # Handles OneHot + Scaling
-            "target_encoder": target_encoder,  # For decoding predictions (classification only)
-            "features": ml_model.features,  # List of feature column names
-            "categorical_cols": categorical_cols,  # Which columns are categorical
-            "numerical_cols": numerical_cols,  # Which columns are numerical
-            "algorithm": ml_model.algorithm.value  # Algorithm type for reference
+            "model": model,
+            "preprocessor": preprocessor,
+            "target_encoder": target_encoder,
+            "features": ml_model.features,
+            "categorical_cols": categorical_cols,
+            "numerical_cols": numerical_cols,
+            "algorithm": ml_model.algorithm.value,
         }, model_file_path)
+
+        async with await client.start_session() as session:
+            async with session.start_transaction():
+                ml_model.status = ModelStatus.completed
+                ml_model.metrics = metrics  # ✅ Add this line
+                ml_model.file_path = str(model_file_path)  # ✅ Also save the file path
+                ml_model.updated_at = datetime.utcnow()
+                await ml_model.save(session=session)
 
         task.update_state(state="SUCCESS", meta={"progress": 100, "status": "completed"})
 
         logger.info(f"Model {model_id} trained successfully with metrics: {metrics}")
 
-        async with await client.start_session() as session:
-            async with session.start_transaction():
-                ml_model.status = ModelStatus.completed
-                ml_model.updated_at = datetime.utcnow()
-                await ml_model.save(session=session)
-
         return {
             "status": "completed",
             "metrics": metrics,
-            "model_id": model_id
+            "model_id": model_id,
         }
-
 
     except Exception as e:
         logger.error(f"Error in train_model_async: {e}", exc_info=True)
 
-        # Clean up model file if it was created
         if model_file_path and model_file_path.exists():
             model_file_path.unlink()
 
         raise
+    finally:
+        client.close()
 
 
-async def mark_as_failed(model_id : str , error_message : str):
+async def mark_as_failed(model_id: str, error_message: str):
+    client = None
     try:
+        client = await init_beanie_for_task()
         ml_model = await Model.get(PydanticObjectId(model_id))
 
         if ml_model:
@@ -250,3 +312,6 @@ async def mark_as_failed(model_id : str , error_message : str):
 
     except Exception as e:
         logger.error(f"Error marking model as failed: {e}", exc_info=True)
+    finally:
+        if client:
+            client.close()
