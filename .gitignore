@@ -103,6 +103,7 @@ Desktop.ini
 *.key
 *.cert
 
-
 # datasets
 backend/app/storage/datasets/
+backend/app/storage/models/
+
