@@ -26,3 +26,13 @@ def get_client() -> AsyncIOMotorClient:
     if not _client:
         raise RuntimeError("Mongo client not initialized! Did you forget to call init_db()?")
     return _client
+
+
+async def get_task_client() -> AsyncIOMotorClient:
+    """Create a fresh Motor client for Celery tasks (with its own event loop)."""
+    client = AsyncIOMotorClient(MONGO_URI)
+    await init_beanie(
+        database=client[DB_NAME],
+        document_models=[User, Model, Dataset, BlacklistedToken]
+    )
+    return client
