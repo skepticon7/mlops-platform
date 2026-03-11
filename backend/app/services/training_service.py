@@ -32,12 +32,13 @@ class TrainingService:
                     logger.info(f"Creating model for {model_data.name}")
                     model = await ModelService.create_model(dataset.id, model_data, user, session=session)
 
-                    train_model_task.delay(str(model.id))
+            task = train_model_task.delay(str(model.id))
 
-                    return {
-                        "dataset_id": str(model.dataset_id),g
-                        "model_id": str(model.id)
-                    }
+            return {
+                "dataset_id": str(model.dataset_id),
+                "model_id": str(model.id),
+                "task_id" : str(task.id)
+            }
         except Exception as e:
             logger.error(f"error training model : {e}")
             if dataset and dataset.file_path:

@@ -20,8 +20,7 @@ logger = logging.getLogger(__name__)
 class DatasetService:
 
     @staticmethod
-    async def upload_dataset(file: UploadFile, user : User , session):
-
+    async def upload_dataset(file: UploadFile, user: User, session):
 
         if not file.filename.endswith(".csv"):
             raise BadRequestException(message="Only CSV files are supported")
@@ -58,6 +57,12 @@ class DatasetService:
 
             if len(df.columns) > 1000:  # Reasonable limit
                 raise BadRequestException(message="Too many columns (max 1000)")
+
+            # Normalize column names to lowercase
+            df.columns = [col.strip().lower().replace(" ", "_") for col in df.columns]
+
+            # Save the CSV back with normalized column names
+            df.to_csv(file_path, index=False)
 
             columns = [
                 ColumnInfo(name=col, dType=str(df[col].dtype))
@@ -101,15 +106,13 @@ class DatasetService:
             updated_at=dataset.updated_at
         )
 
-
     @staticmethod
-    async def get_datasets_by_user_id(user_id : str) -> List[DatasetResponse]:
+    async def get_datasets_by_user_id(user_id: str) -> List[DatasetResponse]:
 
         try:
             user_oid = PydanticObjectId(user_id)
         except Exception:
             raise NotFoundException(message="Invalid user ID format")
-
 
         user_check = await User.get(PydanticObjectId(user_oid))
 
@@ -117,8 +120,6 @@ class DatasetService:
             raise NotFoundException(message="user not found")
 
         datasets = await Dataset.find(Dataset.user_id == user_oid).to_list()
-
-
 
         return [
             DatasetResponse(
@@ -133,12 +134,3 @@ class DatasetService:
             )
             for ds in datasets
         ]
-
-
-
-
-
-
-
-
-
