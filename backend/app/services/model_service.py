@@ -29,7 +29,7 @@ class ModelService:
             name=model_data.name,
             algorithm=model_data.algorithm,
             task_type=model_data.task_type,
-            features=[col.name for col in dataset.columns],
+            features=[col.name for col in dataset.columns if col.name != model_data.target_column],
             target_column=model_data.target_column,
             hyperparams=model_data.hyperparams,
             metrics={},

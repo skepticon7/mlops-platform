@@ -52,17 +52,17 @@ def get_valid_hyperparams(algorithm_class, hyperparams: dict | None) -> dict:
     """
     if not hyperparams:
         return {}
-    
+
     # Get valid parameter names from the algorithm's __init__ signature
     sig = inspect.signature(algorithm_class.__init__)
     valid_params = set(sig.parameters.keys()) - {'self'}
-    
+
     # Filter to only valid parameters
     filtered_params = {
-        key: value for key, value in hyperparams.items() 
+        key: value for key, value in hyperparams.items()
         if key in valid_params
     }
-    
+
     return filtered_params
 
 
@@ -180,7 +180,7 @@ async def train_model_async(task, model_id: str):
         algorithm_class = ALGORITHM_MAP.get(ml_model.algorithm)
 
         if ml_model.algorithm in [Algorithm.linear_regression, Algorithm.logistic_regression]:
-            y = df[ml_model.target_column]
+            y = df[ml_model.target_column].copy()
 
             target_encoder = None
 
@@ -197,9 +197,12 @@ async def train_model_async(task, model_id: str):
             X_train_transformed = preprocessor.fit_transform(X_train)
             X_test_transformed = preprocessor.transform(X_test)
 
+
             valid_hyperparams = get_valid_hyperparams(algorithm_class, ml_model.hyperparams)
             model = algorithm_class(**valid_hyperparams)
+
             model.fit(X_train_transformed, y_train)
+
 
             task.update_state(state="PROGRESS", meta={"progress": 70, "status": "evaluating"})
 
@@ -208,9 +211,9 @@ async def train_model_async(task, model_id: str):
             if ml_model.algorithm == Algorithm.logistic_regression:
                 metrics = {
                     "accuracy": float(accuracy_score(y_test, y_pred)),
-                    "precision": float(precision_score(y_test, y_pred)),
-                    "recall": float(recall_score(y_test, y_pred)),
-                    "f1": float(f1_score(y_test, y_pred)),
+                    "precision": float(precision_score(y_test, y_pred, average="weighted", zero_division=0)),
+                    "recall": float(recall_score(y_test, y_pred, average="weighted", zero_division=0)),
+                    "f1": float(f1_score(y_test, y_pred, average="weighted", zero_division=0)),
                 }
             elif ml_model.algorithm == Algorithm.linear_regression:
                 metrics = {
@@ -231,6 +234,8 @@ async def train_model_async(task, model_id: str):
             model = algorithm_class(**valid_hyperparams)
 
             if ml_model.algorithm == Algorithm.kmeans:
+                pca = PCA(n_components=0.9)
+                X_transformed = pca.fit_transform(X_transformed)
                 labels = model.fit_predict(X_transformed)
 
                 task.update_state(state="PROGRESS", meta={"progress": 70, "status": "evaluating"})
