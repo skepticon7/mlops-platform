@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/providers/AuthProvider";
 
 const geistSans = Geist({
     variable: "--font-geist-sans",
@@ -15,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-    title: "Your App",
-    description: "Your description",
+    title: "MLOps Studio",
+    description: "Train, deploy, and manage machine learning models",
 };
 
 export default function RootLayout({
@@ -25,8 +26,10 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-        <body>{children}</body>
+        <html lang="en" className={`dark ${geistSans.variable} ${geistMono.variable}`}>
+        <body>
+            <AuthProvider>{children}</AuthProvider>
+        </body>
         </html>
     );
 }

@@ -2,12 +2,14 @@ from contextlib import asynccontextmanager
 from encodings.rot_13 import rot13
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.db.database import init_db
 from app.core.exception_handlers import register_exception_handlers
 from app.api.auth_router import router as auth_router
 from app.api.dataset_router import router as dataset_router
 from app.api.model_router import router as model_router
+from app.api.analytics_router import router as analytics_router
 import logging
 
 logging.basicConfig(
@@ -27,9 +29,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title= "MLOps platform" , lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.mount("/datasets" , StaticFiles(directory="app/storage/datasets") , name="datasets")
 
 register_exception_handlers(app)
 app.include_router(prefix="/api" , router= auth_router)
 app.include_router(prefix="/api" , router=dataset_router)
 app.include_router(prefix="/api" , router=model_router)
+app.include_router(prefix="/api" , router=analytics_router)

@@ -275,8 +275,8 @@ async def train_model_async(task, model_id: str):
         async with await client.start_session() as session:
             async with session.start_transaction():
                 ml_model.status = ModelStatus.completed
-                ml_model.metrics = metrics  # ✅ Add this line
-                ml_model.file_path = str(model_file_path)  # ✅ Also save the file path
+                ml_model.metrics = metrics
+                ml_model.file_path = str(model_file_path) 
                 ml_model.updated_at = datetime.utcnow()
                 await ml_model.save(session=session)
 
