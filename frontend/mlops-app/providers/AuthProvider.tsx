@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation"
 import { apiFetch } from "@/lib/api-client"
 import { STORAGE_KEYS } from "@/lib/constants"
 import type { AuthUser, LoginResponse } from "@/types/auth.types"
+import {isTokenExpired} from "@/utils/token";
 
 interface AuthState {
     user: AuthUser | null
@@ -41,16 +42,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
         const userJson = localStorage.getItem(STORAGE_KEYS.USER)
 
-        if (token && userJson) {
-            try {
-                const user: AuthUser = JSON.parse(userJson)
-                setState({ user, token, isAuthenticated: true, isLoading: false })
-            } catch {
-                localStorage.removeItem(STORAGE_KEYS.TOKEN)
-                localStorage.removeItem(STORAGE_KEYS.USER)
-                setState((s) => ({ ...s, isLoading: false }))
-            }
-        } else {
+        if(!token || !userJson) {
+            setState((s) => ({...s, isLoading: false}));
+            return;
+        }
+
+        if(isTokenExpired(token)) {
+            localStorage.removeItem(STORAGE_KEYS.TOKEN)
+            localStorage.removeItem(STORAGE_KEYS.USER)
+            setState({ user: null, token: null, isAuthenticated: false, isLoading: false })
+            return
+        }
+
+        try {
+            const user: AuthUser = JSON.parse(userJson)
+            setState({ user, token, isAuthenticated: true, isLoading: false })
+        } catch {
+            localStorage.removeItem(STORAGE_KEYS.TOKEN)
+            localStorage.removeItem(STORAGE_KEYS.USER)
             setState((s) => ({ ...s, isLoading: false }))
         }
     }, [])

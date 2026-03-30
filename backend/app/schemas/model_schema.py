@@ -29,3 +29,13 @@ class ModelResponse(BaseModel):
     status : ModelStatus
     created_at : datetime
     updated_at : datetime | None = None
+
+
+class ModelsPageResponse(BaseModel):
+    id : str
+    name : str
+    algorithm : Algorithm
+    status : ModelStatus
+    created_at : datetime
+
+
