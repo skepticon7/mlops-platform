@@ -35,7 +35,15 @@ class ModelsPageResponse(BaseModel):
     id : str
     name : str
     algorithm : Algorithm
+    accuracy : Optional[float] = None
     status : ModelStatus
     created_at : datetime
+
+
+class ModelPaginationResponse(BaseModel):
+    models : list[ModelsPageResponse]
+    total_pages : int
+    total : int
+    page : int
 
 

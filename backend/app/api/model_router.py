@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Form, UploadFile, File, Depends
+
+from fastapi import APIRouter, Form, UploadFile, File, Depends , Query
 import json
+
+from starlette import status
+
 from app.models.user import User
 from app.core.security import get_current_user
-from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse
+from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse
 from app.services.model_service import ModelService
 from app.services.training_service import TrainingService
 
@@ -22,9 +26,18 @@ async def train_model(
     return result
 
 
-@router.get("/getModels" , response_model=list[ModelsPageResponse])
+@router.get("/getModels" , response_model=ModelPaginationResponse)
 async def get_models(
         user:User = Depends(get_current_user),
+        page : int = Query(default=1 ,ge=1),
 ):
-    models = await ModelService.get_models(user)
+    models = await ModelService.get_models(user , page)
     return models
+
+@router.delete("/deleteModel/{model_id}" , status_code=status.HTTP_204_NO_CONTENT)
+async def delete_model(
+        model_id : str,
+        user : User = Depends(get_current_user)
+):
+    await ModelService.delete_model(model_id , user)
+
