@@ -1,5 +1,6 @@
 import api from "@/lib/api"
-import {ModelPaginationResponse, ModelResponse} from "@/types/models.types";
+import {ModelPaginationResponse} from "@/types/model.types";
+import {ModelDetailResponse} from "@/types/model.types";
 
 
 export const modelsService = {
@@ -8,5 +9,8 @@ export const modelsService = {
     },
     deleteModel : (model_id : string) => {
         return api.delete<void>(`/model/deleteModel/${model_id}`)
+    },
+    getModel: (model_id: string) => {
+        return api.get<ModelDetailResponse>(`/model/getModel/${model_id}`)
     }
 }

@@ -6,7 +6,8 @@ from starlette import status
 
 from app.models.user import User
 from app.core.security import get_current_user
-from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse
+from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse, \
+    ModelDetailsResponse
 from app.services.model_service import ModelService
 from app.services.training_service import TrainingService
 
@@ -41,3 +42,10 @@ async def delete_model(
 ):
     await ModelService.delete_model(model_id , user)
 
+@router.get("/getModel/{model_id}" , response_model=ModelDetailsResponse)
+async def get_model(
+        model_id : str,
+        user: User = Depends(get_current_user),
+):
+    model = await ModelService.get_model(model_id , user)
+    return model

@@ -2,7 +2,7 @@
 import {AlertTriangle, BrainCircuit, ChevronLeft, ChevronRight, Eye, Plus, Rocket, Trash2} from "lucide-react";
 import {useRouter} from "next/navigation";
 import {useEffect, useState} from "react";
-import {ModelPaginationResponse, ModelResponse} from "@/types/models.types";
+import {ModelPaginationResponse, ModelResponse} from "@/types/model.types";
 import {useFetch} from "@/hooks/use-fetch";
 import {modelsService} from "@/services/models.service";
 import toast from "react-hot-toast";
@@ -11,10 +11,12 @@ import NoModels from "@/components/models/NoModels";
 import {statusBadge} from "@/components/models/StatusBadge"
 import ModelRow from "@/components/models/ModelRow";
 import Error from "@/components/models/Error";
+import ModelDetails from "@/components/model/ModelDetails";
 
 
 export default function ModelsPage() {
 
+    const [selectedModel , setSelectedModel] = useState<{id: string ; name: string} | null>(null);
 
     const router = useRouter();
 
@@ -42,6 +44,27 @@ export default function ModelsPage() {
     }
 
 
+    if(selectedModel) {
+        return (
+            <div className="w-full p-8">
+                {/* Breadcrumb */}
+                <nav className="flex items-center gap-1.5 text-[12.5px] mb-6">
+                    <button
+                        onClick={() => setSelectedModel(null)}
+                        className="text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                    >
+                        Models
+                    </button>
+                    <ChevronRight size={12} className="text-text-tertiary"/>
+                    <span className="text-text-secondary font-medium">{selectedModel.name}</span>
+                </nav>
+
+                <ModelDetails model_id={selectedModel.id} onBack={() => setSelectedModel(null)}/>
+            </div>
+        )
+    }
+
+
     return (
         <div className='w-full p-8'>
 
@@ -54,7 +77,7 @@ export default function ModelsPage() {
             )}
 
             {models && models?.length > 0 && (
-                <div >
+                <div>
                     <div className="flex w-full items-start justify-between mb-7 gap-4 flex-wrap">
                         <div>
                             <h1 className="text-[20px] font-semibold tracking-[-.01em] text-text-primary">
@@ -88,7 +111,8 @@ export default function ModelsPage() {
                                 </tr>
                                 </thead>
                                 <tbody>
-                                {models.map((m: ModelResponse , index : number) => (<ModelRow index={index} total={total} row={m} onDelete={handleDelete} />
+                                {models.map((m: ModelResponse , index : number) => (
+                                    <ModelRow onView={() => setSelectedModel({id: m.id , name: m.name})} index={index} total={total} row={m} onDelete={handleDelete} />
                                 ))}
                                 </tbody>
                             </table>

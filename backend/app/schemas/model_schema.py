@@ -47,3 +47,13 @@ class ModelPaginationResponse(BaseModel):
     page : int
 
 
+class ModelDetailsResponse(BaseModel):
+    id: str
+    name: str
+    algorithm: Algorithm
+    task_type : TaskType
+    status : ModelStatus
+    hyperparams : Optional[dict]
+    metrics : Dict
+    created_at : datetime
+

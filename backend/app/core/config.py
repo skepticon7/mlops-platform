@@ -4,7 +4,7 @@ import os
 load_dotenv()
 
 # ── Database ──────────────────────────────────────────────────────────────────
-MONGO_URI = os.getenv("MONGO_URI")
+MONGO_URI = os.getenv("MONGO_URL")
 DB_NAME = os.getenv("DB_NAME")
 
 # ── JWT Authentication ────────────────────────────────────────────────────────
@@ -14,4 +14,4 @@ if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY environment variable is not set")
 
 # Token lifespan in minutes (default: 10 minutes)
-ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10"))
+ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "50"))

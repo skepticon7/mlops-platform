@@ -1,4 +1,4 @@
-import {ModelResponse} from "@/types/models.types";
+import {ModelResponse} from "@/types/model.types";
 import {statusBadge} from "@/components/models/StatusBadge";
 import {Eye, Rocket, Trash2} from "lucide-react";
 
@@ -19,7 +19,7 @@ const ALGORITHM = {
 
 interface ModelRowProps {
     row : ModelResponse,
-    onView? : (model : ModelResponse) => void,
+    onView : (model : string) => void,
     onDeploy? : (model : ModelResponse) => void,
     onDelete? : (model : ModelResponse) => void,
     index : number,
@@ -64,9 +64,7 @@ export default function ModelRow({row , onView , onDeploy , onDelete , index , t
                     <button
                         // disabled={m.status !== "ready"}
                         onClick={() => {
-                            // setDetailModel(m);
-                            // setPage("models/detail")
-                            console.log("hey")
+                            onView(row.id)
                         }}
                         className="inline-flex cursor-pointer items-center gap-1.5 px-2 py-1 rounded-md text-[12px] text-text-secondary hover:text-text-primary hover:bg-background-overlay transition-colors disabled:opacity-45 disabled:pointer-events-none"
                     >

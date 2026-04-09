@@ -1,6 +1,7 @@
-import {ModelResponse} from "@/types/models.types";
+import {ModelResponse} from "@/types/model.types";
+import {ModelDetailResponse} from "@/types/model.types";
 
-export function statusBadge(status: ModelResponse["status"]) {
+export function statusBadge(status: ModelResponse["status"] | ModelDetailResponse["status"]) {
     const map = {
         completed: { label: "Completed", class: "bg-success/10 text-success" },
         training:  { label: "Training",  class: "bg-warning/10 text-warning" },

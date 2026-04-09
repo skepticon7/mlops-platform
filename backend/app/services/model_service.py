@@ -7,7 +7,8 @@ import logging
 from app.core.exceptions import NotFoundException, UnauthorizedException, BadRequestException
 from app.db.database import get_client
 from app.models.dataset import Dataset
-from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse
+from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse, \
+    ModelDetailsResponse
 from app.models.user import User
 from app.models.model import Model, Algorithm
 from beanie.operators import In
@@ -106,6 +107,24 @@ class ModelService:
         logger.info("Deleting model file")
         Path(model.file_path).unlink(missing_ok=True)
 
+    @staticmethod
+    async def get_model(model_id: str, user: User):
+
+        model = await Model.find_one(Model.id == PydanticObjectId(model_id))
+
+        if not model:
+            raise NotFoundException(message="Model not found")
+
+        return ModelDetailsResponse(
+            id= str(model.id),
+            name= model.name,
+            algorithm= model.algorithm,
+            status= model.status,
+            task_type= model.task_type,
+            hyperparams= model.hyperparams,
+            metrics= model.metrics,
+            created_at= model.created_at
+        )
 
 
 
