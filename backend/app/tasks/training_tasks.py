@@ -17,6 +17,7 @@ from sklearn.linear_model import LinearRegression , LogisticRegression
 from sklearn.cluster import KMeans , DBSCAN
 from sklearn.decomposition import PCA
 from sklearn.metrics import (
+    confusion_matrix , classification_report,
     accuracy_score,precision_score,recall_score,f1_score,
     root_mean_squared_error , mean_squared_error , mean_absolute_error , r2_score,
     silhouette_score , davies_bouldin_score , calinski_harabasz_score
@@ -31,6 +32,7 @@ from app.core.exceptions import NotFoundException, BadRequestException
 from app.db.database import get_client
 from app.models.model import Model , ModelStatus , Algorithm , TaskType
 from app.models.dataset import Dataset
+from app.utils.DatasetUtils import get_valid_features
 
 logger = logging.getLogger(__name__)
 
@@ -95,12 +97,14 @@ async def train_model_async(task, model_id: str):
     client = await init_beanie_for_task()
 
     model_file_path = None
+
+    train_samples = None
+    test_samples = None
+
     try:
         async with await client.start_session() as session:
             async with session.start_transaction():
                 ml_model = await Model.get(PydanticObjectId(model_id))
-                print("model id : " + model_id)
-                print(ml_model)
                 if not ml_model:
                     raise NotFoundException("Model not found")
 
@@ -121,38 +125,43 @@ async def train_model_async(task, model_id: str):
 
         task.update_state(state="PROGRESS", meta={"progress": 20, "status": "preparing_features"})
 
-        # --- DYNAMIC FEATURE CLEANING ---
-        clean_features = []
-        dropped_dynamic_ids = []
+        clean_features = get_valid_features(dataset.columns , ml_model.target_column)
 
-        for feature in ml_model.features:
-            # 1. Drop the target column to prevent data leakage
-            if feature == ml_model.target_column:
-                continue
+        if not clean_features:
+            raise BadRequestException("No valid features found after preprocessing")
 
-            # 2. Dynamically drop ID-like columns (100% unique values)
-            # We only check integer or string/object columns. We keep float columns
-            # because highly precise continuous data might naturally be unique.
-            if feature in df.columns:
-                is_all_unique = df[feature].nunique() == len(df)
-                is_int_or_str = pd.api.types.is_integer_dtype(df[feature]) or pd.api.types.is_object_dtype(df[feature])
+        # # --- DYNAMIC FEATURE CLEANING ---
+        # clean_features = []
+        # dropped_dynamic_ids = []
+        #
+        # for feature in ml_model.features:
+        #     # 1. Drop the target column to prevent data leakage
+        #     if feature == ml_model.target_column:
+        #         continue
+        #
+        #     # 2. Dynamically drop ID-like columns (100% unique values)
+        #     # We only check integer or string/object columns. We keep float columns
+        #     # because highly precise continuous data might naturally be unique.
+        #     if feature in df.columns:
+        #         is_all_unique = df[feature].nunique() == len(df)
+        #         is_int_or_str = pd.api.types.is_integer_dtype(df[feature]) or pd.api.types.is_object_dtype(df[feature])
+        #
+        #         if is_all_unique and is_int_or_str:
+        #             dropped_dynamic_ids.append(feature)
+        #             continue  # Skip adding to clean_features
+        #
+        #     # If it passes the checks, keep the feature
+        #     clean_features.append(feature)
+        #
+        # if dropped_dynamic_ids:
+        #     logger.info(f"Dynamically dropped ID-like columns: {dropped_dynamic_ids}")
+        #
+        # # Update the model document in the DB so it reflects the actual features used
+        # if len(clean_features) != len(ml_model.features):
+        #     ml_model.features = clean_features
+        # # --------------------------------
 
-                if is_all_unique and is_int_or_str:
-                    dropped_dynamic_ids.append(feature)
-                    continue  # Skip adding to clean_features
-
-            # If it passes the checks, keep the feature
-            clean_features.append(feature)
-
-        if dropped_dynamic_ids:
-            logger.info(f"Dynamically dropped ID-like columns: {dropped_dynamic_ids}")
-
-        # Update the model document in the DB so it reflects the actual features used
-        if len(clean_features) != len(ml_model.features):
-            ml_model.features = clean_features
-        # --------------------------------
-
-        X = df[ml_model.features].copy()
+        X = df[clean_features].copy()
 
         categorical_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
         numerical_cols = X.select_dtypes(include=["number"]).columns.tolist()
@@ -192,6 +201,9 @@ async def train_model_async(task, model_id: str):
                 X, y, test_size=0.2, random_state=42
             )
 
+            train_samples = len(X_train)
+            test_samples = len(X_test)
+
             task.update_state(state="PROGRESS", meta={"progress": 40, "status": "training"})
 
             X_train_transformed = preprocessor.fit_transform(X_train)
@@ -204,17 +216,33 @@ async def train_model_async(task, model_id: str):
             model.fit(X_train_transformed, y_train)
 
 
+
             task.update_state(state="PROGRESS", meta={"progress": 70, "status": "evaluating"})
 
             y_pred = model.predict(X_test_transformed)
 
+
+
             if ml_model.algorithm == Algorithm.logistic_regression:
+
+                report = classification_report(y_test, y_pred, output_dict=True)
+                cm = confusion_matrix(y_test, y_pred).tolist()
+                labels = model.classes_.tolist()
+
+
                 metrics = {
-                    "accuracy": float(accuracy_score(y_test, y_pred)),
-                    "precision": float(precision_score(y_test, y_pred, average="weighted", zero_division=0)),
-                    "recall": float(recall_score(y_test, y_pred, average="weighted", zero_division=0)),
-                    "f1": float(f1_score(y_test, y_pred, average="weighted", zero_division=0)),
+                    "accuracy": float(report["accuracy"]),
+                    "precision": float(report["weighted avg"]["precision"]),
+                    "recall": float(report["weighted avg"]["recall"]),
+                    "f1": float(report["weighted avg"]["f1-score"]),
+                    "per_class": {
+                        cls: metrics for cls, metrics in report.items()
+                        if cls not in ["accuracy", "macro avg", "weighted avg"]
+                    },
+                    "confusion_matrix": cm,
+                    "confusion_matrix_labels": labels
                 }
+
             elif ml_model.algorithm == Algorithm.linear_regression:
                 metrics = {
                     "mse": float(mean_squared_error(y_test, y_pred)),
@@ -266,7 +294,7 @@ async def train_model_async(task, model_id: str):
             "model": model,
             "preprocessor": preprocessor,
             "target_encoder": target_encoder,
-            "features": ml_model.features,
+            "features": clean_features,
             "categorical_cols": categorical_cols,
             "numerical_cols": numerical_cols,
             "algorithm": ml_model.algorithm.value,
@@ -276,6 +304,8 @@ async def train_model_async(task, model_id: str):
             async with session.start_transaction():
                 ml_model.status = ModelStatus.completed
                 ml_model.metrics = metrics
+                ml_model.train_samples = train_samples
+                ml_model.test_samples = test_samples
                 ml_model.file_path = str(model_file_path) 
                 ml_model.updated_at = datetime.utcnow()
                 await ml_model.save(session=session)
@@ -320,3 +350,6 @@ async def mark_as_failed(model_id: str, error_message: str):
     finally:
         if client:
             client.close()
+
+
+

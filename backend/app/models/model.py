@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import List , Optional , Dict
 from beanie import PydanticObjectId
+
 from app.models.mixing import TimestampMixin
 from beanie import Document
 
@@ -29,8 +30,9 @@ class Model(Document , TimestampMixin):
     algorithm : Algorithm
     task_type : TaskType
     target_column : Optional[str] = None
-    features : List[str]
     hyperparams : Optional[Dict] = None
+    train_samples : Optional[int] = None
+    test_samples : Optional[int] = None
     metrics : Dict
     file_path : str
     status : ModelStatus = ModelStatus.pending

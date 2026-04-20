@@ -2,12 +2,12 @@
 from fastapi import APIRouter, Form, UploadFile, File, Depends , Query
 import json
 
+from fastapi.params import Body
 from starlette import status
 
 from app.models.user import User
 from app.core.security import get_current_user
-from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse, \
-    ModelDetailsResponse
+from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse, ModelDetailsResponse, PredictResponse, PredictRequest
 from app.services.model_service import ModelService
 from app.services.training_service import TrainingService
 
@@ -49,3 +49,13 @@ async def get_model(
 ):
     model = await ModelService.get_model(model_id , user)
     return model
+
+
+@router.post("/predict/{model_id}" , response_model=PredictResponse)
+def predict(
+        model_id: str,
+        user: User = Depends(get_current_user),
+        predict_request : PredictRequest = Body(...)
+):
+    prediction = ModelService.predict(model_id , predict_request)
+    return prediction

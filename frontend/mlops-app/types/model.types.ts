@@ -26,11 +26,21 @@ type TaskType = "supervised" | "unsupervised";
 type ModelStatus = "failed" | "training" | "completed" | "pending"
 
 
-type LogisticRegressionMetrics = {
+type PerClassMetrics = {
+    precision: number;
+    recall: number;
+    "f1-score": number;
+    support: number;
+}
+
+export type LogisticRegressionMetrics = {
     accuracy: number;
     precision: number;
     recall: number;
     f1: number;
+    per_class : Record<string, PerClassMetrics>,
+    confusion_matrix : number[][],
+    confusion_matrix_labels : string[]
 }
 
 type LogisticRegressionHyperparams = {
@@ -43,7 +53,7 @@ type LogisticRegressionHyperparams = {
     random_state: number;
 }
 
-type LinearRegressionMetrics = {
+export type LinearRegressionMetrics = {
     mse: number;
     rmse: number;
     mae: number;
@@ -58,12 +68,56 @@ type LinearRegressionHyperparams = {
 }
 
 
+type DatasetDetails = {
+    total_rows: number;
+    total_feature: number;
+    target_column? : string;
+    train_samples?: number;
+    test_samples?: number;
+}
+
+export type Feature = {
+    name: string;
+    dType: string;
+    example: string | number;
+    is_valid_feature : boolean
+
+}
+
+export type PredictRequest = {
+    algorithm: Algorithm
+   features : Record<string, string | number>
+}
+
+type BasePredictionResponse = {
+    model_id : string;
+    type: string;
+}
+
+export type ClassificationResponse = BasePredictionResponse & {
+    type: "classification";
+    prediction: string;
+    confidence: number;
+    probabilities: Record<string, number>;
+};
+
+export type PredictResponse = | ClassificationResponse;
+
+export type PredictState = {
+    loading : boolean;
+    error : string | null;
+    status : number | null;
+    ms : number | null;
+    data : PredictResponse | null;
+}
 
 type BaseModelDetail = {
     id: string;
     name: string;
     algorithm: Algorithm;
     task_type : TaskType;
+    features : Feature[];
+    dataset_details: DatasetDetails,
     target_column?: string;
     status: Status;
     created_at: string;
@@ -80,7 +134,7 @@ export type ModelDetailResponse = |
         metrics : LinearRegressionMetrics;
         hyperparams : LinearRegressionHyperparams;
     })
-    |
-    (BaseModelDetail & {
-        algorithm : "kmeans";
-    })
+
+
+export type LogisticModel = Extract<ModelDetailResponse, {algorithm : "logistic_regression"}>
+export type LinearModel = Extract<ModelDetailResponse, {algorithm : "linear_regression"}>

@@ -6,10 +6,12 @@ import logging
 import uuid
 import aiofiles
 from app.models.user import User
-from app.models.dataset import Dataset, ColumnInfo
+from app.models.dataset import Dataset , DatasetColumnInfo
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.schemas.dataset_schema import DatasetResponse
 from typing import List
+
+from app.utils.DatasetUtils import infer_column_type, infer_feature_validity
 
 DATASET_DIR = Path(__file__).parent.parent / "storage/datasets"
 DATASET_DIR.mkdir(parents=True, exist_ok=True)
@@ -64,10 +66,31 @@ class DatasetService:
             # Save the CSV back with normalized column names
             df.to_csv(file_path, index=False)
 
-            columns = [
-                ColumnInfo(name=col, dType=str(df[col].dtype))
-                for col in df.columns
-            ]
+            columns_info = []
+
+            for col in df.columns:
+                series = df[col]
+
+                example_series = series.dropna()
+                example = example_series.iloc[0] if not example_series.empty else None
+
+                is_valid, reason = infer_feature_validity(
+                    series=series,
+                    col_name=col,
+                    target_column="survived"  # or pass dynamically
+                )
+
+                columns_info.append(
+                    DatasetColumnInfo(
+                        name=col,
+                        dType=infer_column_type(series),
+                        example=example,
+                        is_valid_feature=is_valid,
+                        exclusion_reason=reason,
+                    )
+                )
+
+
 
         except BadRequestException:
             file_path.unlink(missing_ok=True)
@@ -85,7 +108,7 @@ class DatasetService:
             unique_name=unique_filename,
             file_path=str(file_path),
             row_count=len(df),
-            columns=columns
+            columns=columns_info
         )
 
         try:
@@ -101,7 +124,7 @@ class DatasetService:
             name=dataset.name,
             file_path=dataset.file_path,
             row_count=dataset.row_count,
-            columns=columns,
+            columns=dataset.columns,
             created_at=dataset.created_at,
             updated_at=dataset.updated_at
         )

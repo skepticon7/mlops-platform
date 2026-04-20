@@ -1,17 +1,25 @@
+from http.client import HTTPException
 from math import ceil
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+
 from beanie import PydanticObjectId
+from celery.worker.state import total_count
 from multipart import file_path
 import logging
 from app.core.exceptions import NotFoundException, UnauthorizedException, BadRequestException
 from app.db.database import get_client
 from app.models.dataset import Dataset
+from app.schemas.dataset_schema import DatasetRowCountProjection
 from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse, \
-    ModelDetailsResponse
+    ModelDetailsResponse, DatasetDetails, PredictRequest, PredictResponse, ClassificationResponse
 from app.models.user import User
 from app.models.model import Model, Algorithm
 from beanie.operators import In
+
+from app.utils.ModelUtils import load_model
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +119,26 @@ class ModelService:
     async def get_model(model_id: str, user: User):
 
         model = await Model.find_one(Model.id == PydanticObjectId(model_id))
+        dataset = await Dataset.find_one(Dataset.id == model.dataset_id).project(DatasetRowCountProjection)
 
         if not model:
             raise NotFoundException(message="Model not found")
+
+        if not dataset:
+            raise NotFoundException(message="Dataset not found")
+
+        dataset_details = DatasetDetails(
+            total_rows=dataset.row_count,
+            total_features=len(dataset.columns),
+            target_column=model.target_column,
+            train_samples=model.train_samples,
+            test_samples=model.test_samples
+        )
+
+        clean_features = [
+            f for f in dataset.columns
+            if f.name != model.target_column and f.is_valid_feature
+        ]
 
         return ModelDetailsResponse(
             id= str(model.id),
@@ -121,9 +146,62 @@ class ModelService:
             algorithm= model.algorithm,
             status= model.status,
             task_type= model.task_type,
+            target_column=model.target_column,
+            features=clean_features,
+            dataset_details=dataset_details,
             hyperparams= model.hyperparams,
             metrics= model.metrics,
             created_at= model.created_at
+        )
+
+    @staticmethod
+    def predict(model_id: str , request: PredictRequest):
+
+        bundle = load_model(model_id)
+
+        model = bundle["model"]
+        preprocessor = bundle["preprocessor"]
+        target_encoder = bundle["target_encoder"]
+        features = bundle["features"]
+
+        try:
+            df = pd.DataFrame([request.features])[features]
+        except Exception as e:
+            raise BadRequestException(message="invalid input features")
+
+        X = preprocessor.transform(df)
+
+
+        if request.algorithm == Algorithm.logistic_regression:
+            probs = model.predict_proba(X)[0]
+            classes = model.classes_
+
+            probabilities = {
+                str(c) : round(float(p) , 2)
+                for c,p in zip(classes, probs)
+            }
+
+            prediction = classes[int(np.argmax(probs))]
+            confidence = round(float(np.max(probs)) , 2)
+
+            return ClassificationResponse(
+                model_id=str(model_id),
+                type="classification",
+                prediction=str(prediction),
+                confidence=confidence,
+                probabilities=probabilities
+            )
+
+        preds = model.predict(X)
+
+        if target_encoder:
+            preds = target_encoder.inverse_transform(preds)
+
+
+
+        return PredictResponse(
+            model_id = str(model_id),
+            predictions = preds.tolist()
         )
 
 

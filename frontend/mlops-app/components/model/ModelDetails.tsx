@@ -1,4 +1,4 @@
-import React, {useState} from "react";
+import React, {useEffect, useState} from "react";
 import {statusBadge} from "@/components/models/StatusBadge";
 import {ArrowUpRight, Rocket} from "lucide-react";
 import {useFetch} from "@/hooks/use-fetch";
@@ -6,6 +6,9 @@ import {ModelDetailResponse} from "@/types/model.types";
 import {modelsService} from "@/services/models.service";
 import Spinner from "@/components/ui/Spinner";
 import Error from "@/components/models/Error";
+import MetricsTab from "@/components/model/MetricsTab";
+import HyperparamsTab from "@/components/model/HyperparamsTab";
+import PlaygroundTab from "@/components/model/PlaygroundTab";
 
 
 interface ModelDetailsProps {
@@ -45,6 +48,9 @@ export default function ModelDetails({model_id , onBack} : ModelDetailsProps) {
         []
     );
 
+    useEffect(() => {
+        console.log(data);
+    } , [data , model_id])
 
 
 
@@ -64,8 +70,12 @@ export default function ModelDetails({model_id , onBack} : ModelDetailsProps) {
         <Error/>
     }
 
+    if(!data) {
+        return <Error/>;
+    }
 
-    const model : ModelDetailResponse | null = data ?? null;
+
+    const model : ModelDetailResponse  = data;
     const algo = model!.algorithm
     const task = TASK_MAP[algo] ?? "Unknown"
     const algoLabel = ALGORITHM_LABEL[algo] ?? algo
@@ -121,6 +131,10 @@ export default function ModelDetails({model_id , onBack} : ModelDetailsProps) {
                     </button>
                 ))}
             </div>
+
+            {tab === "metrics" && <MetricsTab model={model}/>}
+            {tab === "hyperparams" && <HyperparamsTab model={model}/>}
+            {tab === "playground" && <PlaygroundTab model={model}/>}
         </div>
     )
 
