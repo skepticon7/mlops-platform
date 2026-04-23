@@ -14,7 +14,7 @@ from app.db.database import get_client
 from app.models.dataset import Dataset
 from app.schemas.dataset_schema import DatasetRowCountProjection
 from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse, \
-    ModelDetailsResponse, DatasetDetails, PredictRequest, PredictResponse, ClassificationResponse
+    ModelDetailsResponse, DatasetDetails, PredictRequest, PredictResponse, ClassificationResponse, RegressionResponse
 from app.models.user import User
 from app.models.model import Model, Algorithm
 from beanie.operators import In
@@ -155,34 +155,38 @@ class ModelService:
         )
 
     @staticmethod
-    def predict(model_id: str , request: PredictRequest):
+    def predict(model_id: str, request: PredictRequest):
 
         bundle = load_model(model_id)
 
         model = bundle["model"]
+        sigma = bundle.get("residual_std", 0)
+        algorithm = Algorithm(bundle["algorithm"])
         preprocessor = bundle["preprocessor"]
-        target_encoder = bundle["target_encoder"]
         features = bundle["features"]
 
         try:
             df = pd.DataFrame([request.features])[features]
-        except Exception as e:
+        except Exception:
             raise BadRequestException(message="invalid input features")
 
         X = preprocessor.transform(df)
+        preds = model.predict(X)
 
 
-        if request.algorithm == Algorithm.logistic_regression:
+        if algorithm == Algorithm.logistic_regression:
+
             probs = model.predict_proba(X)[0]
             classes = model.classes_
 
             probabilities = {
-                str(c) : round(float(p) , 2)
-                for c,p in zip(classes, probs)
+                str(c): round(float(p), 2)
+                for c, p in zip(classes, probs)
             }
 
             prediction = classes[int(np.argmax(probs))]
-            confidence = round(float(np.max(probs)) , 2)
+            confidence = round(float(np.max(probs)), 2)
+
 
             return ClassificationResponse(
                 model_id=str(model_id),
@@ -192,18 +196,29 @@ class ModelService:
                 probabilities=probabilities
             )
 
-        preds = model.predict(X)
+        if request.algorithm == Algorithm.linear_regression:
+            pred = float(np.expm1(preds[0]))  # only if log-trained
 
-        if target_encoder:
-            preds = target_encoder.inverse_transform(preds)
+            error = 1.96 * sigma if sigma else 0
 
+            lower = round(pred - error, 3)
+            upper = round(pred + error, 3)
+
+            pourcentage_ci = round((error / abs(pred)) * 100, 2) if pred != 0 else 0
+
+            return RegressionResponse(
+                model_id=str(model_id),
+                type="regression",
+                prediction=round(pred, 3),  # keep numeric
+                ci=[lower, upper],  # keep numeric
+                pourcentage_ci=pourcentage_ci
+            )
 
 
         return PredictResponse(
-            model_id = str(model_id),
-            predictions = preds.tolist()
+            model_id=str(model_id),
+            predictions=preds.tolist()
         )
-
 
 
 

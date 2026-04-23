@@ -12,60 +12,20 @@ from beanie import init_beanie, PydanticObjectId
 
 from app.core.celery_app import celery_app
 from app.core.config import MONGO_URI, DB_NAME
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression , LogisticRegression
-from sklearn.cluster import KMeans , DBSCAN
-from sklearn.decomposition import PCA
-from sklearn.metrics import (
-    confusion_matrix , classification_report,
-    accuracy_score,precision_score,recall_score,f1_score,
-    root_mean_squared_error , mean_squared_error , mean_absolute_error , r2_score,
-    silhouette_score , davies_bouldin_score , calinski_harabasz_score
-)
-from sklearn.preprocessing import LabelEncoder , OneHotEncoder , StandardScaler
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-import inspect  # Add this import
 
 from app.core.exceptions import NotFoundException, BadRequestException
-from app.db.database import get_client
 from app.models.model import Model , ModelStatus , Algorithm , TaskType
 from app.models.dataset import Dataset
-from app.utils.DatasetUtils import get_valid_features
+from app.utils.ModelUtils import evaluate_regression, evaluate_classification, create_model, \
+    split_data, prepare_target, load_dataset, prepare_features, train_model, evaluate_clustering, dump_model, fit_transform_features
 
 logger = logging.getLogger(__name__)
 
-ALGORITHM_MAP = {
-    Algorithm.linear_regression: LinearRegression,
-    Algorithm.logistic_regression: LogisticRegression,
-    Algorithm.kmeans: KMeans,
-    Algorithm.pca: PCA,
-}
 
 MODEL_DIR = Path(__file__).parent.parent / "storage" / "models"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def get_valid_hyperparams(algorithm_class, hyperparams: dict | None) -> dict:
-    """
-    Filter hyperparameters to only include those valid for the given algorithm.
-    This prevents errors when algorithm and hyperparams don't match.
-    """
-    if not hyperparams:
-        return {}
-
-    # Get valid parameter names from the algorithm's __init__ signature
-    sig = inspect.signature(algorithm_class.__init__)
-    valid_params = set(sig.parameters.keys()) - {'self'}
-
-    # Filter to only valid parameters
-    filtered_params = {
-        key: value for key, value in hyperparams.items()
-        if key in valid_params
-    }
-
-    return filtered_params
 
 
 async def init_beanie_for_task():
@@ -93,11 +53,9 @@ def train_model_task(self, model_id: str):
 async def train_model_async(task, model_id: str):
     logger.info("starting training for the model")
 
-    # Initialize a fresh client for this event loop
     client = await init_beanie_for_task()
 
     model_file_path = None
-
     train_samples = None
     test_samples = None
 
@@ -105,6 +63,7 @@ async def train_model_async(task, model_id: str):
         async with await client.start_session() as session:
             async with session.start_transaction():
                 ml_model = await Model.get(PydanticObjectId(model_id))
+
                 if not ml_model:
                     raise NotFoundException("Model not found")
 
@@ -114,191 +73,84 @@ async def train_model_async(task, model_id: str):
                 ml_model.status = ModelStatus.training
                 await ml_model.save(session=session)
 
-        task.update_state(state="PROGRESS", meta={"progress": 10})
 
         dataset = await Dataset.get(ml_model.dataset_id)
 
         if not dataset:
             raise NotFoundException(message="Dataset not found")
 
-        df = pd.read_csv(dataset.file_path)
+        df = await load_dataset(dataset)
 
-        task.update_state(state="PROGRESS", meta={"progress": 20, "status": "preparing_features"})
+        X , clean_features , cat_cols , num_cols , preprocessor = prepare_features(df , dataset.columns , ml_model.target_column)
 
-        clean_features = get_valid_features(dataset.columns , ml_model.target_column)
+        # =========================
+        # TARGET PREPARATION
+        # =========================
 
-        if not clean_features:
-            raise BadRequestException("No valid features found after preprocessing")
+        y , label_encoder = prepare_target(df , ml_model.target_column , ml_model.algorithm)
 
-        # # --- DYNAMIC FEATURE CLEANING ---
-        # clean_features = []
-        # dropped_dynamic_ids = []
-        #
-        # for feature in ml_model.features:
-        #     # 1. Drop the target column to prevent data leakage
-        #     if feature == ml_model.target_column:
-        #         continue
-        #
-        #     # 2. Dynamically drop ID-like columns (100% unique values)
-        #     # We only check integer or string/object columns. We keep float columns
-        #     # because highly precise continuous data might naturally be unique.
-        #     if feature in df.columns:
-        #         is_all_unique = df[feature].nunique() == len(df)
-        #         is_int_or_str = pd.api.types.is_integer_dtype(df[feature]) or pd.api.types.is_object_dtype(df[feature])
-        #
-        #         if is_all_unique and is_int_or_str:
-        #             dropped_dynamic_ids.append(feature)
-        #             continue  # Skip adding to clean_features
-        #
-        #     # If it passes the checks, keep the feature
-        #     clean_features.append(feature)
-        #
-        # if dropped_dynamic_ids:
-        #     logger.info(f"Dynamically dropped ID-like columns: {dropped_dynamic_ids}")
-        #
-        # # Update the model document in the DB so it reflects the actual features used
-        # if len(clean_features) != len(ml_model.features):
-        #     ml_model.features = clean_features
-        # # --------------------------------
+        # =========================
+        # SPLIT
+        # =========================
+        X_train, X_test, y_train, y_test = split_data(X , y)
 
-        X = df[clean_features].copy()
-
-        categorical_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
-        numerical_cols = X.select_dtypes(include=["number"]).columns.tolist()
-
-        transformers = []
-
-        if categorical_cols:
-            categorical_pipeline = Pipeline([
-                ("imputer", SimpleImputer(strategy="constant", fill_value="missing")),
-                ("onehot", OneHotEncoder(drop="first", handle_unknown="ignore", sparse_output=False)),
-            ])
-            transformers.append(("cat", categorical_pipeline, categorical_cols))
-
-        if numerical_cols:
-            numerical_pipeline = Pipeline([
-                ("imputer", SimpleImputer(strategy="mean")),
-                ("scaler", StandardScaler()),
-            ])
-            transformers.append(("num", numerical_pipeline, numerical_cols))
-
-        preprocessor = ColumnTransformer(transformers=transformers)
-
-        task.update_state(state="PROGRESS", meta={"progress": 30, "status": "preprocessing"})
-
-        algorithm_class = ALGORITHM_MAP.get(ml_model.algorithm)
-
-        if ml_model.algorithm in [Algorithm.linear_regression, Algorithm.logistic_regression]:
-            y = df[ml_model.target_column].copy()
-
-            target_encoder = None
-
-            if y.dtype == "object" or y.dtype.name == "category":
-                target_encoder = LabelEncoder()
-                y = target_encoder.fit_transform(y)
-
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42
-            )
-
-            train_samples = len(X_train)
-            test_samples = len(X_test)
-
-            task.update_state(state="PROGRESS", meta={"progress": 40, "status": "training"})
-
-            X_train_transformed = preprocessor.fit_transform(X_train)
-            X_test_transformed = preprocessor.transform(X_test)
+        train_samples = len(X_train)
+        test_samples = len(X_test)
 
 
-            valid_hyperparams = get_valid_hyperparams(algorithm_class, ml_model.hyperparams)
-            model = algorithm_class(**valid_hyperparams)
+        # =========================
+        # TRANSFORM
+        # =========================
+        X_train_transformed , X_test_transformed = fit_transform_features(preprocessor , X_train , X_test)
 
-            model.fit(X_train_transformed, y_train)
+        # =========================
+        # MODEL
+        # =========================
+
+        model = create_model(ml_model.algorithm , ml_model.hyperparams)
+
+        train_model(model , X_train_transformed , y_train)
+
+        y_train_pred = model.predict(X_train_transformed)
+        y_test_pred = model.predict(X_test_transformed)
 
 
 
-            task.update_state(state="PROGRESS", meta={"progress": 70, "status": "evaluating"})
+        residual_std = None
+        # =========================
+        # METRICS
+        # =========================
+        if ml_model.algorithm == Algorithm.linear_regression:
+            residuals = y_train - y_train_pred
+            residual_std = float(np.std(residuals))
+            metrics = evaluate_regression(model , y_test_pred , y_train_pred , y_train , y_test , preprocessor)
 
-            y_pred = model.predict(X_test_transformed)
+        elif ml_model.algorithm == Algorithm.logistic_regression:
+            metrics = evaluate_classification(y_test, y_test_pred)
+
+        elif ml_model.algorithm == Algorithm.kmeans:
+            metrics = evaluate_clustering(model, X_train_transformed)
 
 
 
-            if ml_model.algorithm == Algorithm.logistic_regression:
-
-                report = classification_report(y_test, y_pred, output_dict=True)
-                cm = confusion_matrix(y_test, y_pred).tolist()
-                labels = model.classes_.tolist()
-
-
-                metrics = {
-                    "accuracy": float(report["accuracy"]),
-                    "precision": float(report["weighted avg"]["precision"]),
-                    "recall": float(report["weighted avg"]["recall"]),
-                    "f1": float(report["weighted avg"]["f1-score"]),
-                    "per_class": {
-                        cls: metrics for cls, metrics in report.items()
-                        if cls not in ["accuracy", "macro avg", "weighted avg"]
-                    },
-                    "confusion_matrix": cm,
-                    "confusion_matrix_labels": labels
-                }
-
-            elif ml_model.algorithm == Algorithm.linear_regression:
-                metrics = {
-                    "mse": float(mean_squared_error(y_test, y_pred)),
-                    "rmse": float(root_mean_squared_error(y_test, y_pred)),
-                    "mae": float(mean_absolute_error(y_test, y_pred)),
-                    "r2": float(r2_score(y_test, y_pred)),
-                }
-
-        else:
-            target_encoder = None
-
-            task.update_state(state="PROGRESS", meta={"progress": 40, "status": "training"})
-
-            X_transformed = preprocessor.fit_transform(X)
-
-            valid_hyperparams = get_valid_hyperparams(algorithm_class, ml_model.hyperparams)
-            model = algorithm_class(**valid_hyperparams)
-
-            if ml_model.algorithm == Algorithm.kmeans:
-                pca = PCA(n_components=0.9)
-                X_transformed = pca.fit_transform(X_transformed)
-                labels = model.fit_predict(X_transformed)
-
-                task.update_state(state="PROGRESS", meta={"progress": 70, "status": "evaluating"})
-
-                metrics = {
-                    "silhouette_score": float(silhouette_score(X_transformed, labels)),
-                    "davies_bouldin_score": float(davies_bouldin_score(X_transformed, labels)),
-                    "calinski_harabasz_score": float(calinski_harabasz_score(X_transformed, labels)),
-                }
-            elif ml_model.algorithm == Algorithm.pca:
-                model.fit(X_transformed)
-
-                explained_ratio = model.explained_variance_ratio_
-
-                metrics = {
-                    "explained_variance_ratio": explained_ratio.tolist(),
-                    "cumulative_variance_ratio": np.cumsum(explained_ratio).tolist(),
-                    "n_components": int(model.n_components_),
-                    "explained_variance": model.explained_variance_.tolist(),
-                    "singular_values": model.singular_values_.tolist(),
-                }
-
-        task.update_state(state="PROGRESS", meta={"progress": 90, "status": "saving"})
+        # =========================
+        # SAVE MODEL
+        # =========================
+        task.update_state(state="PROGRESS", meta={"progress": 90})
 
         model_file_path = MODEL_DIR / f"{model_id}.joblib"
 
-        joblib.dump({
-            "model": model,
-            "preprocessor": preprocessor,
-            "target_encoder": target_encoder,
-            "features": clean_features,
-            "categorical_cols": categorical_cols,
-            "numerical_cols": numerical_cols,
-            "algorithm": ml_model.algorithm.value,
-        }, model_file_path)
+        dump_model(
+            model ,
+            preprocessor ,
+            clean_features ,
+            cat_cols ,
+            num_cols ,
+            ml_model.algorithm ,
+            residual_std ,
+            label_encoder,
+            model_file_path
+        )
 
         async with await client.start_session() as session:
             async with session.start_transaction():
@@ -306,13 +158,11 @@ async def train_model_async(task, model_id: str):
                 ml_model.metrics = metrics
                 ml_model.train_samples = train_samples
                 ml_model.test_samples = test_samples
-                ml_model.file_path = str(model_file_path) 
+                ml_model.file_path = str(model_file_path)
                 ml_model.updated_at = datetime.utcnow()
                 await ml_model.save(session=session)
 
-        task.update_state(state="SUCCESS", meta={"progress": 100, "status": "completed"})
-
-        logger.info(f"Model {model_id} trained successfully with metrics: {metrics}")
+        task.update_state(state="SUCCESS", meta={"progress": 100})
 
         return {
             "status": "completed",
@@ -321,15 +171,15 @@ async def train_model_async(task, model_id: str):
         }
 
     except Exception as e:
-        logger.error(f"Error in train_model_async: {e}", exc_info=True)
+        logger.error(f"Error in training: {e}", exc_info=True)
 
         if model_file_path and model_file_path.exists():
             model_file_path.unlink()
 
         raise
+
     finally:
         client.close()
-
 
 async def mark_as_failed(model_id: str, error_message: str):
     client = None

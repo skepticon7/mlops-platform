@@ -81,7 +81,7 @@ class RegressionResponse(BasePredictionResponse):
     type: Literal["regression"]
     prediction: float
     ci: list[float] | None = None
-    feature_importance: Dict[str, float] | None = None
+    pourcentage_ci: float | None
 
 
 PredictResponse = Union[

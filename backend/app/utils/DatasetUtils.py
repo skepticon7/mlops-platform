@@ -24,6 +24,39 @@ def infer_feature_validity(series, col_name, target_column=None):
     if col_name == target_column:
         return False, "target_column"
 
+    # missing check (FIXED)
+    missing_ratio = series.isna().mean()
+    if missing_ratio > 0.5:
+        return False, "too_many_missing"
+
+    s = series.dropna()
+
+    if len(s) == 0:
+        return False, "empty_column"
+
+    uniqueness_ratio = s.nunique() / max(len(s), 1)
+
+    # ID-like columns (numeric or text)
+    if len(s) > 50 and uniqueness_ratio > 0.98:
+        return False, "unique_id"
+
+    # text columns
+    if s.dtype == "object":
+        nunique = s.nunique()
+
+        if nunique > 50:
+            return False, "high_cardinality"
+
+        avg_length = s.astype(str).str.len().mean()
+
+        if avg_length > 10 and uniqueness_ratio > 0.5:
+            return False, "ticket_like_id"
+
+    return True, None
+    # target
+    if col_name == target_column:
+        return False, "target_column"
+
     s = series.dropna()
 
     if len(s) == 0:

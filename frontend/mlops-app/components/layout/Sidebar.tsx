@@ -54,9 +54,8 @@ export default function Sidebar() {
                 {navItem("Train New Model", <Plus size={14} />, "/models/new")}
 
                 <div className="text-[11px] font-semibold text-text-tertiary uppercase tracking-[.09em] px-[10px] pt-[14px] pb-[5px]">
-                    Deploy
+                    Space
                 </div>
-                {navItem("Deployments", <Rocket size={14} />, "/deployments")}
                 {navItem("Playground", <Terminal size={14} />, "/playground")}
             </nav>
 

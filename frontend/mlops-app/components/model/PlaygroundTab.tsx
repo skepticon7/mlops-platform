@@ -1,10 +1,18 @@
-import {Feature, ModelDetailResponse, PredictRequest, PredictResponse, PredictState} from "@/types/model.types";
+import {
+    ClassificationState,
+    Feature,
+    ModelDetailResponse,
+    PredictRequest,
+    PredictResponse,
+    PredictState, RegressionState
+} from "@/types/model.types";
 import {useEffect, useState,} from "react";
 import {AlertCircle, Loader2, Play, Terminal} from "lucide-react";
 import {getTypeInput} from "@/utils/playground";
 import toast from "react-hot-toast";
 import {modelsService} from "@/services/models.service";
 import LogisticRegressionResult from "@/components/model/logitsticRegression/LogisticRegressionResult";
+import LinearRegressionResult from "@/components/model/LinearRegression/LinearRegressionResult";
 
 interface PlaygroundTabProps {
     model : ModelDetailResponse
@@ -23,7 +31,7 @@ export default function PlaygroundTab({model} : PlaygroundTabProps) {
 
 
 
-    const [result , setResult] = useState<PredictState>({
+    const [result , setResult] = useState<PredictState<PredictResponse>>({
         loading : false,
         error: null,
         status: null,
@@ -120,7 +128,8 @@ export default function PlaygroundTab({model} : PlaygroundTabProps) {
                     </button>
                 </div>
             </div>
-            {model.algorithm === "logistic_regression" && <LogisticRegressionResult prediction={result}/>}
+            {model.algorithm === "logistic_regression" && <LogisticRegressionResult prediction={result as ClassificationState}/>}
+            {model.algorithm === "linear_regression" && <LinearRegressionResult prediction={result as RegressionState}/>}
         </div>
     )
 }

@@ -1,8 +1,8 @@
 import {Loader2, Terminal} from "lucide-react";
-import {ClassificationResponse, PredictState} from "@/types/model.types";
+import {ClassificationResponse, ClassificationState, PredictState} from "@/types/model.types";
 
 interface LogisticRegressionResultProps {
-    prediction : PredictState;
+    prediction : ClassificationState;
 }
 
 export default function LogisticRegressionResult({prediction}: LogisticRegressionResultProps) {
@@ -15,7 +15,7 @@ export default function LogisticRegressionResult({prediction}: LogisticRegressio
                         <span className="font-mono text-[11px] text-success">{prediction.ms}ms</span>
                         <span
                             className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-success/10 text-success">
-                                <span className="w-1.5 h-1.5 rounded-full bg-success"/>200 OK
+                                <span className="w-1.5 h-1.5 rounded-full bg-success"/>{prediction.status} OK
                             </span>
                     </div>
                 )}

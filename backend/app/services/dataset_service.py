@@ -76,8 +76,7 @@ class DatasetService:
 
                 is_valid, reason = infer_feature_validity(
                     series=series,
-                    col_name=col,
-                    target_column="survived"  # or pass dynamically
+                    col_name=col
                 )
 
                 columns_info.append(

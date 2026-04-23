@@ -54,10 +54,15 @@ type LogisticRegressionHyperparams = {
 }
 
 export type LinearRegressionMetrics = {
-    mse: number;
+    test_mse: number;
+    train_mse: number;
     rmse: number;
+    coef_norm: number;
     mae: number;
-    r2: number;
+    features_importance: Record<string , number>
+    intercept?: number | null;
+    train_r2: number;
+    test_r2: number;
 }
 
 type LinearRegressionHyperparams = {
@@ -101,15 +106,29 @@ export type ClassificationResponse = BasePredictionResponse & {
     probabilities: Record<string, number>;
 };
 
-export type PredictResponse = | ClassificationResponse;
-
-export type PredictState = {
-    loading : boolean;
-    error : string | null;
-    status : number | null;
-    ms : number | null;
-    data : PredictResponse | null;
+export type LinearRegressionResponse = BasePredictionResponse & {
+    type: "regression";
+    prediction: string;
+    ci: string[];
+    pourcentage_ci: number;
 }
+
+export type PredictResponse = | ClassificationResponse | LinearRegressionResponse;
+
+
+export type PredictState<T extends PredictResponse = PredictResponse> = {
+    loading: boolean;
+    error: string | null;
+    status: number | null;
+    ms: number | null;
+    data: T | null;
+};
+
+export type ClassificationState = PredictState<ClassificationResponse>;
+
+export type RegressionState = PredictState<LinearRegressionResponse>;
+
+
 
 type BaseModelDetail = {
     id: string;
