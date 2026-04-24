@@ -9,8 +9,8 @@ interface AccuracyLeaderboardProps {
 }
 
 function getAccuracyColor(acc: number) {
-    if (acc > 0.95) return { text: "text-success", bar: "bg-success" }
-    if (acc > 0.85) return { text: "text-warning", bar: "bg-warning" }
+    if (acc > 0.9) return { text: "text-success", bar: "bg-success" }
+    if (acc > 0.75) return { text: "text-warning", bar: "bg-warning" }
     return { text: "text-danger", bar: "bg-danger" }
 }
 
@@ -18,7 +18,7 @@ export default function AccuracyLeaderboard({ items }: AccuracyLeaderboardProps)
     const router = useRouter()
 
     return (
-        <div className="bg-background-subtle border border-border rounded-lg flex flex-col">
+        <div className="bg-background-subtle border border-border  rounded-lg flex flex-col">
             <div className="px-5 py-[14px] border-b border-border flex items-center justify-between">
                 <span className="font-medium text-[13px] text-text-primary">
                     Accuracy Leaderboard

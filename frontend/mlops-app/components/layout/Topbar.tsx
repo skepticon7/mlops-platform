@@ -16,7 +16,6 @@ export default function Topbar() {
             return [{ label: "Models", href: "/models" }, { label: "Train New" }]
         if (pathname.startsWith("/models/"))
             return [{ label: "Models", href: "/models" }, { label: "Detail" }] // Detail name would ideally be dynamic
-        if (pathname === "/deployments") return [{ label: "Deployments" }]
         if (pathname === "/playground") return [{ label: "Playground" }]
         return [{ label: pathname.split("/").filter(Boolean).pop() || "" }]
     }
@@ -45,11 +44,7 @@ export default function Topbar() {
                 ))}
             </div>
 
-            {/* Actions */}
-            <button className="flex items-center gap-[6px] px-2 py-[5px] text-[13px] font-medium text-text-secondary hover:text-text-primary hover:bg-background-overlay rounded-[6px] transition-colors cursor-pointer border border-transparent">
-                <Settings size={13} />
-                Settings
-            </button>
+
         </header>
     )
 }

@@ -3,6 +3,7 @@ import {formatMetrics} from "@/utils/metrics";
 import LogisticRegMetrics from "../model/logitsticRegression/LogisticRegressionMetrics"
 import React from "react";
 import LinearRegMetrics from "@/components/model/LinearRegression/LinearRegressionMetrics";
+import KmeansMetrics from "@/components/model/Kmeans/KmeansMetrics";
 
 
 interface MetricsTabProps {
@@ -15,6 +16,7 @@ export default function MetricsTab({model} : MetricsTabProps) {
         <div className={'space-y-5'}>
             {model.algorithm === "logistic_regression" && <LogisticRegMetrics model={model}/>}
             {model.algorithm === "linear_regression" && <LinearRegMetrics model={model}/>}
+            {model.algorithm === "kmeans" && <KmeansMetrics model={model}/>}
         </div>
     )
 }

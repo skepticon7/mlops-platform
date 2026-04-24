@@ -72,7 +72,6 @@ export default function Sidebar() {
                         <div className="text-[13px] font-medium text-text-primary truncate">
                             {user ? `${user.firstName} ${user.lastName}` : "User"}
                         </div>
-                        <div className="text-[11px] text-text-tertiary">Pro Plan</div>
                     </div>
                     <LogOut
                         size={13}

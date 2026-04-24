@@ -73,9 +73,7 @@ class ClassificationResponse(BasePredictionResponse):
 class ClusteringResponse(BasePredictionResponse):
     type: Literal["clustering"]
     cluster : int
-    label : str
     distances: Dict[str , float ] | None = None
-    size: int | None = None
 
 class RegressionResponse(BasePredictionResponse):
     type: Literal["regression"]

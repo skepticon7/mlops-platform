@@ -197,46 +197,104 @@ def evaluate_regression(model, y_test_pred, y_train_pred , y_train, y_test, prep
     return metrics
 
 
-def evaluate_classification(y_test , y_test_pred):
+def evaluate_classification(y_test , y_test_pred , model):
+
     report = classification_report(y_test, y_test_pred, output_dict=True)
     cm = confusion_matrix(y_test, y_test_pred).tolist()
-    per_class = {
-        label: {
-            "precision": float(values["precision"]),
-            "recall": float(values["recall"]),
-            "f1": float(values["f1-score"]),
-            "support": int(values["support"]),
-        }
-        for label, values in report.items()
-        if label not in ("accuracy", "macro avg", "weighted avg")
-    }
+    labels = model.classes_.tolist()
 
     metrics = {
         "accuracy": float(report["accuracy"]),
         "precision": float(report["weighted avg"]["precision"]),
         "recall": float(report["weighted avg"]["recall"]),
         "f1": float(report["weighted avg"]["f1-score"]),
+        "per_class": {
+            cls: metrics for cls, metrics in report.items()
+            if cls not in ["accuracy", "macro avg", "weighted avg"]
+        },
         "confusion_matrix": cm,
-        "per_class": per_class
+        "confusion_matrix_labels": labels
     }
+
     return metrics
 
 
-def evaluate_clustering(model , X_transformed ):
+def evaluate_clustering(model, X_transformed, X_raw=None, feature_names=None):
 
-    pca = PCA(n_components=0.9)
-    X_reduced = pca.fit_transform(X_transformed)
+    # =========================
+    # LABELS
+    # =========================
+    labels = model.predict(X_transformed)
+    unique, counts = np.unique(labels, return_counts=True)
 
-    labels = model.fit_predict(X_reduced)
+    # =========================
+    # CLUSTER SIZES
+    # =========================
+    cluster_sizes = {
+        f"Cluster {int(k)}": int(v) for k, v in zip(unique, counts)
+    }
 
+    # =========================
+    # METRICS (safe)
+    # =========================
+    try:
+        sil = float(silhouette_score(X_transformed, labels))
+    except:
+        sil = None
+
+    try:
+        db = float(davies_bouldin_score(X_transformed, labels))
+    except:
+        db = None
+
+    try:
+        ch = float(calinski_harabasz_score(X_transformed, labels))
+    except:
+        ch = None
+
+    # =========================
+    # CLUSTER PROFILES
+    # =========================
+    profile_data = X_raw if X_raw is not None else X_transformed
+
+    cols = (
+        feature_names
+        if feature_names
+        else [f"feature_{i}" for i in range(profile_data.shape[1])]
+    )
+
+    df_cluster = pd.DataFrame(profile_data, columns=cols)
+    df_cluster["cluster"] = labels
+
+    profiles = {}
+
+    for cluster_id in sorted(unique):
+        cluster_data = df_cluster[df_cluster["cluster"] == cluster_id].drop(columns=["cluster"])
+
+        cluster_profile = {}
+
+        for col in cluster_data.columns:
+            if pd.api.types.is_numeric_dtype(cluster_data[col]):
+                cluster_profile[col] = round(float(cluster_data[col].mean()), 2)
+            else:
+                mode_val = cluster_data[col].mode()
+                cluster_profile[col] = mode_val.iloc[0] if not mode_val.empty else None
+
+        profiles[f"Cluster {int(cluster_id)}"] = cluster_profile
+
+    # =========================
+    # FINAL METRICS
+    # =========================
     metrics = {
-        "silhouette_score": float(silhouette_score(X_transformed, labels)),
-        "davies_bouldin_score": float(davies_bouldin_score(X_transformed, labels)),
-        "calinski_harabasz_score": float(calinski_harabasz_score(X_transformed, labels)),
+        "silhouette_score": sil,
+        "davies_bouldin_score": db,
+        "calinski_harabasz_score": ch,
+        "inertia": float(model.inertia_) if hasattr(model, "inertia_") else None,
+        "cluster_sizes": cluster_sizes,
+        "cluster_profiles": profiles,
     }
 
     return metrics
-
 
 def dump_model(model , preprocessor , clean_features , cat_cols , num_cols , algorithm , residual_std , label_encoder ,model_file_path ):
     joblib.dump({

@@ -31,6 +31,15 @@ export const formatMetrics = (model : ModelDetailResponse) =>   {
                         }))
                 }
 
+            case 'kmeans':
+                m = model.metrics;
+                return {
+                   "inertia" : m.inertia.toFixed(2),
+                    "silhouette_score" : m.silhouette_score.toFixed(3),
+                    "davies_bouldin_score" : m.davies_bouldin_score.toFixed(3),
+                    "calinski_harabasz_score" : m.calinski_harabasz_score.toFixed(3)
+                }
+
 
             default : return {};
 

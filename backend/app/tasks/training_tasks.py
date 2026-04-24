@@ -58,8 +58,14 @@ async def train_model_async(task, model_id: str):
     model_file_path = None
     train_samples = None
     test_samples = None
+    metrics = None
+    residual_std = None
+    label_encoder = None
 
     try:
+        # =========================
+        # LOAD MODEL (DB)
+        # =========================
         async with await client.start_session() as session:
             async with session.start_transaction():
                 ml_model = await Model.get(PydanticObjectId(model_id))
@@ -73,85 +79,110 @@ async def train_model_async(task, model_id: str):
                 ml_model.status = ModelStatus.training
                 await ml_model.save(session=session)
 
-
+        # =========================
+        # LOAD DATASET
+        # =========================
         dataset = await Dataset.get(ml_model.dataset_id)
 
         if not dataset:
-            raise NotFoundException(message="Dataset not found")
+            raise NotFoundException("Dataset not found")
 
         df = await load_dataset(dataset)
 
-        X , clean_features , cat_cols , num_cols , preprocessor = prepare_features(df , dataset.columns , ml_model.target_column)
+        X, clean_features, cat_cols, num_cols, preprocessor = prepare_features(
+            df, dataset.columns, ml_model.target_column
+        )
+
+        is_clustering = ml_model.algorithm == Algorithm.kmeans
 
         # =========================
-        # TARGET PREPARATION
+        # TARGET
         # =========================
+        if not is_clustering:
+            y, label_encoder = prepare_target(df, ml_model.target_column, ml_model.algorithm)
+        else:
+            y, label_encoder = None, None
 
-        y , label_encoder = prepare_target(df , ml_model.target_column , ml_model.algorithm)
 
         # =========================
         # SPLIT
         # =========================
-        X_train, X_test, y_train, y_test = split_data(X , y)
-
-        train_samples = len(X_train)
-        test_samples = len(X_test)
-
+        if not is_clustering:
+            X_train, X_test, y_train, y_test = split_data(X, y)
+            train_samples = len(X_train)
+            test_samples = len(X_test)
+        else:
+            X_train = X
+            X_test = y_train = y_test = None
+            train_samples = len(X)
+            test_samples = 0
 
         # =========================
-        # TRANSFORM
+        # PREPROCESSING
         # =========================
-        X_train_transformed , X_test_transformed = fit_transform_features(preprocessor , X_train , X_test)
+        if not is_clustering:
+            X_train_transformed, X_test_transformed = fit_transform_features(
+                preprocessor, X_train, X_test
+            )
+        else:
+            preprocessor.fit(X_train)
+            X_train_transformed = preprocessor.transform(X_train)
+            X_test_transformed = None
 
         # =========================
         # MODEL
         # =========================
+        model = create_model(ml_model.algorithm, ml_model.hyperparams)
 
-        model = create_model(ml_model.algorithm , ml_model.hyperparams)
+        # =========================
+        # TRAIN + PREDICT
+        # =========================
+        if not is_clustering:
+            train_model(model, X_train_transformed, y_train)
+            y_train_pred = model.predict(X_train_transformed)
+            y_test_pred = model.predict(X_test_transformed)
+        else:
+            y_train_pred = None
+            y_test_pred = None
+            model.fit(X_train_transformed)
 
-        train_model(model , X_train_transformed , y_train)
-
-        y_train_pred = model.predict(X_train_transformed)
-        y_test_pred = model.predict(X_test_transformed)
-
-
-
-        residual_std = None
         # =========================
         # METRICS
         # =========================
         if ml_model.algorithm == Algorithm.linear_regression:
             residuals = y_train - y_train_pred
             residual_std = float(np.std(residuals))
-            metrics = evaluate_regression(model , y_test_pred , y_train_pred , y_train , y_test , preprocessor)
+            metrics = evaluate_regression(
+                model, y_test_pred, y_train_pred,
+                y_train, y_test, preprocessor
+            )
 
         elif ml_model.algorithm == Algorithm.logistic_regression:
             metrics = evaluate_classification(y_test, y_test_pred)
 
         elif ml_model.algorithm == Algorithm.kmeans:
-            metrics = evaluate_clustering(model, X_train_transformed)
-
-
+            metrics = evaluate_clustering(model, X_train_transformed , X_raw=X_train[num_cols].values , feature_names=num_cols)
 
         # =========================
         # SAVE MODEL
         # =========================
-        task.update_state(state="PROGRESS", meta={"progress": 90})
-
         model_file_path = MODEL_DIR / f"{model_id}.joblib"
 
         dump_model(
-            model ,
-            preprocessor ,
-            clean_features ,
-            cat_cols ,
-            num_cols ,
-            ml_model.algorithm ,
-            residual_std ,
+            model,
+            preprocessor,
+            clean_features,
+            cat_cols,
+            num_cols,
+            ml_model.algorithm,
+            residual_std,
             label_encoder,
             model_file_path
         )
 
+        # =========================
+        # UPDATE DB
+        # =========================
         async with await client.start_session() as session:
             async with session.start_transaction():
                 ml_model.status = ModelStatus.completed
@@ -180,6 +211,8 @@ async def train_model_async(task, model_id: str):
 
     finally:
         client.close()
+
+
 
 async def mark_as_failed(model_id: str, error_message: str):
     client = None

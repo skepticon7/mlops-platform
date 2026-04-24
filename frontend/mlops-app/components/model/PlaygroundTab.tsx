@@ -1,5 +1,5 @@
 import {
-    ClassificationState,
+    ClassificationState, ClusteringState,
     Feature,
     ModelDetailResponse,
     PredictRequest,
@@ -13,6 +13,7 @@ import toast from "react-hot-toast";
 import {modelsService} from "@/services/models.service";
 import LogisticRegressionResult from "@/components/model/logitsticRegression/LogisticRegressionResult";
 import LinearRegressionResult from "@/components/model/LinearRegression/LinearRegressionResult";
+import KmeansResult from "@/components/model/Kmeans/KmeansResult";
 
 interface PlaygroundTabProps {
     model : ModelDetailResponse
@@ -130,6 +131,7 @@ export default function PlaygroundTab({model} : PlaygroundTabProps) {
             </div>
             {model.algorithm === "logistic_regression" && <LogisticRegressionResult prediction={result as ClassificationState}/>}
             {model.algorithm === "linear_regression" && <LinearRegressionResult prediction={result as RegressionState}/>}
+            {model.algorithm === "kmeans" && <KmeansResult prediction={result as ClusteringState} />}
         </div>
     )
 }

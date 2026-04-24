@@ -36,7 +36,7 @@ export default function HyperparamsTab({model} : HyperparamsTabProps) {
                         <p className="text-[13px] font-medium text-text-primary">Dataset Info</p>
                     </div>
                     <div>
-                        {Object.entries(model.dataset_details).map(([k, v]) => (
+                        {Object.entries(model.dataset_details).map(([k , v]) => [k.split("_").join(" ") , v]).map(([k, v]) => (
                             <div key={k}
                                  className="flex justify-between text-[13px] px-4 py-3 border-b border-border last:border-0">
                                 <span className="text-text-tertiary">{k}</span>

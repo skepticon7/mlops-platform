@@ -1,6 +1,6 @@
 import {date} from "yup";
 
-type Algorithm = "linear_regression" | "logistic_regression" | "kmeans" | "pca"
+type Algorithm = "linear_regression" | "logistic_regression" | "kmeans"
 
 type Status = "pending" | "failed" | "training" | "completed"
 
@@ -72,6 +72,23 @@ type LinearRegressionHyperparams = {
     positive: boolean;
 }
 
+type ClusteringMetrics = {
+    silhouette_score: number;
+    davies_bouldin_score: number;
+    calinski_harabasz_score: number;
+    inertia: number;
+    cluster_profiles : Record<string, Record<string, any>>
+    cluster_sizes : Record<string, number>
+}
+
+type ClusteringHyperparams = {
+    n_clusters: number;
+    init: string;
+    max_iter: number;
+    train_split: number;
+    random_state: number;
+}
+
 
 type DatasetDetails = {
     total_rows: number;
@@ -99,6 +116,12 @@ type BasePredictionResponse = {
     type: string;
 }
 
+export type ClusteringResponse = BasePredictionResponse & {
+    type: "clustering";
+    cluster: number;
+    distances: Record<string, number>;
+}
+
 export type ClassificationResponse = BasePredictionResponse & {
     type: "classification";
     prediction: string;
@@ -113,7 +136,9 @@ export type LinearRegressionResponse = BasePredictionResponse & {
     pourcentage_ci: number;
 }
 
-export type PredictResponse = | ClassificationResponse | LinearRegressionResponse;
+
+
+export type PredictResponse = | ClassificationResponse | LinearRegressionResponse | ClusteringResponse;
 
 
 export type PredictState<T extends PredictResponse = PredictResponse> = {
@@ -127,6 +152,8 @@ export type PredictState<T extends PredictResponse = PredictResponse> = {
 export type ClassificationState = PredictState<ClassificationResponse>;
 
 export type RegressionState = PredictState<LinearRegressionResponse>;
+
+export type ClusteringState = PredictState<ClusteringResponse>;
 
 
 
@@ -153,7 +180,14 @@ export type ModelDetailResponse = |
         metrics : LinearRegressionMetrics;
         hyperparams : LinearRegressionHyperparams;
     })
+    |
+    (BaseModelDetail & {
+        algorithm : "kmeans";
+        metrics : ClusteringMetrics;
+        hyperparams : ClusteringHyperparams;
+    })
 
 
 export type LogisticModel = Extract<ModelDetailResponse, {algorithm : "logistic_regression"}>
 export type LinearModel = Extract<ModelDetailResponse, {algorithm : "linear_regression"}>
+export type ClusteringModel = Extract<ModelDetailResponse, {algorithm : "kmeans"}>

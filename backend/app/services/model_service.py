@@ -9,12 +9,14 @@ from beanie import PydanticObjectId
 from celery.worker.state import total_count
 from multipart import file_path
 import logging
+
 from app.core.exceptions import NotFoundException, UnauthorizedException, BadRequestException
 from app.db.database import get_client
 from app.models.dataset import Dataset
 from app.schemas.dataset_schema import DatasetRowCountProjection
 from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse, \
-    ModelDetailsResponse, DatasetDetails, PredictRequest, PredictResponse, ClassificationResponse, RegressionResponse
+    ModelDetailsResponse, DatasetDetails, PredictRequest, PredictResponse, ClassificationResponse, RegressionResponse, \
+    ClusteringResponse
 from app.models.user import User
 from app.models.model import Model, Algorithm
 from beanie.operators import In
@@ -212,6 +214,34 @@ class ModelService:
                 prediction=round(pred, 3),  # keep numeric
                 ci=[lower, upper],  # keep numeric
                 pourcentage_ci=pourcentage_ci
+            )
+
+        if algorithm == Algorithm.kmeans:
+            cluster = int(model.predict(X)[0])
+
+            raw_distances = {}
+
+            x = X[0]
+
+            for i, centroid in enumerate(model.cluster_centers_):
+                dist = np.linalg.norm(x - centroid)
+                raw_distances[f"Cluster {i}"] = float(dist)
+
+
+            eps = 1e-8
+            inv = {k: 1.0 / (v + eps) for k, v in raw_distances.items()}
+            total = sum(inv.values())
+
+            distances = {
+                k: round(v / total, 4)
+                for k, v in inv.items()
+            }
+
+            return ClusteringResponse(
+                model_id=str(model_id),
+                type="clustering",
+                cluster=cluster,
+                distances=distances
             )
 
 
