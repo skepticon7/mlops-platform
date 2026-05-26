@@ -1,16 +1,16 @@
 from beanie import PydanticObjectId
 from starlette.datastructures import UploadFile
 from pathlib import Path
+import anyio
 import pandas as pd
 import logging
 import uuid
 import aiofiles
 from app.models.user import User
-from app.models.dataset import Dataset , DatasetColumnInfo
+from app.models.dataset import Dataset, DatasetColumnInfo
 from app.core.exceptions import BadRequestException, NotFoundException
 from app.schemas.dataset_schema import DatasetResponse
 from typing import List
-
 from app.utils.DatasetUtils import infer_column_type, infer_feature_validity
 
 DATASET_DIR = Path(__file__).parent.parent / "storage/datasets"
@@ -19,10 +19,60 @@ MAX_SIZE = 100 * 1024 * 1024
 logger = logging.getLogger(__name__)
 
 
+def _parse_and_normalize_csv(file_path: Path):
+    """
+    Synchronous helper — runs in a thread to avoid blocking the event loop.
+    Reads, validates, normalizes column names, and re-saves the CSV.
+    Returns (DataFrame, List[DatasetColumnInfo]).
+    """
+    df = pd.read_csv(file_path)
+
+    if df.empty:
+        raise BadRequestException(message="CSV file is empty")
+
+    if len(df.columns) > 1000:
+        raise BadRequestException(message="Too many columns (max 1000)")
+
+    # Normalize column names (strip whitespace and quotes) to match frontend parsing
+    df.columns = [str(col).strip().strip('"').strip("'") for col in df.columns]
+
+    # Save the CSV back with normalized column names
+    df.to_csv(file_path, index=False)
+
+    columns = []
+    for col in df.columns:
+        series = df[col]
+        example_series = series.dropna()
+        example = example_series.iloc[0] if not example_series.empty else None
+
+        # Convert numpy types to native Python types for serialization
+        if hasattr(example, "item"):
+            example = example.item()
+        elif pd.isna(example):
+            example = None
+
+        is_valid, reason = infer_feature_validity(
+            series=series,
+            col_name=col
+        )
+
+        columns.append(
+            DatasetColumnInfo(
+                name=col,
+                dType=infer_column_type(series),
+                example=example,
+                is_valid_feature=is_valid,
+                exclusion_reason=reason
+            )
+        )
+
+    return df, columns
+
+
 class DatasetService:
 
     @staticmethod
-    async def upload_dataset(file: UploadFile, user: User, session):
+    async def upload_dataset(file: UploadFile, user: User, session=None):
 
         if not file.filename.endswith(".csv"):
             raise BadRequestException(message="Only CSV files are supported")
@@ -52,45 +102,10 @@ class DatasetService:
             raise BadRequestException(message="File upload failed")
 
         try:
-            df = pd.read_csv(file_path)
-
-            if df.empty:
-                raise BadRequestException(message="CSV file is empty")
-
-            if len(df.columns) > 1000:  # Reasonable limit
-                raise BadRequestException(message="Too many columns (max 1000)")
-
-            # Normalize column names to lowercase
-            df.columns = [col.strip().lower().replace(" ", "_") for col in df.columns]
-
-            # Save the CSV back with normalized column names
-            df.to_csv(file_path, index=False)
-
-            columns_info = []
-
-            for col in df.columns:
-                series = df[col]
-
-                example_series = series.dropna()
-                example = example_series.iloc[0] if not example_series.empty else None
-
-                is_valid, reason = infer_feature_validity(
-                    series=series,
-                    col_name=col
-                )
-
-                columns_info.append(
-                    DatasetColumnInfo(
-                        name=col,
-                        dType=infer_column_type(series),
-                        example=example,
-                        is_valid_feature=is_valid,
-                        exclusion_reason=reason,
-                    )
-                )
-
-
-
+            # Run heavy pandas I/O in a thread so the event loop stays free
+            df, columns = await anyio.to_thread.run_sync(
+                lambda: _parse_and_normalize_csv(file_path)
+            )
         except BadRequestException:
             file_path.unlink(missing_ok=True)
             raise
@@ -107,7 +122,7 @@ class DatasetService:
             unique_name=unique_filename,
             file_path=str(file_path),
             row_count=len(df),
-            columns=columns_info
+            columns=columns
         )
 
         try:
@@ -123,7 +138,7 @@ class DatasetService:
             name=dataset.name,
             file_path=dataset.file_path,
             row_count=dataset.row_count,
-            columns=dataset.columns,
+            columns=columns,
             created_at=dataset.created_at,
             updated_at=dataset.updated_at
         )
@@ -155,4 +170,4 @@ class DatasetService:
                 updated_at=ds.updated_at
             )
             for ds in datasets
-        ]
+        ]

@@ -23,11 +23,10 @@ export default function Sidebar() {
         return (
             <Link
                 href={path}
-                className={`flex items-center gap-[9px] px-[10px] py-[7px] rounded-[6px] text-[13.5px] transition-colors duration-120 w-full text-left ${
-                    isActive
-                        ? "text-text-primary bg-background-overlay"
-                        : "text-text-secondary hover:text-text-primary hover:bg-background-overlay"
-                }`}
+                className={`flex items-center gap-[9px] px-[10px] py-[7px] rounded-[6px] text-[13.5px] transition-colors duration-120 w-full text-left ${isActive
+                    ? "text-text-primary bg-background-overlay"
+                    : "text-text-secondary hover:text-text-primary hover:bg-background-overlay"
+                    }`}
             >
                 {icon}
                 {label}
@@ -51,7 +50,7 @@ export default function Sidebar() {
                     Models
                 </div>
                 {navItem("All Models", <Brain size={14} />, "/models")}
-                {navItem("Train New Model", <Plus size={14} />, "/models/new")}
+                {navItem("Train New Model", <Plus size={14} />, "/dashboard/models/new")}
 
                 <div className="text-[11px] font-semibold text-text-tertiary uppercase tracking-[.09em] px-[10px] pt-[14px] pb-[5px]">
                     Space

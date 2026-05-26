@@ -1,9 +1,7 @@
 from contextlib import asynccontextmanager
-from encodings.rot_13 import rot13
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from app.db.database import init_db
 from app.core.exception_handlers import register_exception_handlers
 from app.api.auth_router import router as auth_router
@@ -37,7 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/datasets" , StaticFiles(directory="app/storage/datasets") , name="datasets")
+
 
 register_exception_handlers(app)
 app.include_router(prefix="/api" , router= auth_router)

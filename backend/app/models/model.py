@@ -1,12 +1,11 @@
 from enum import Enum
-from typing import List , Optional , Dict
+from typing import List, Optional, Dict
 from beanie import PydanticObjectId
-
 from app.models.mixing import TimestampMixin
 from beanie import Document
 
 
-class TaskType(str , Enum):
+class TaskType(str, Enum):
     supervised = "supervised"
     unsupervised = "unsupervised"
 
@@ -17,27 +16,28 @@ class Algorithm(str, Enum):
     kmeans = "kmeans"
     pca = "pca"
 
-class ModelStatus(str , Enum):
+class ModelStatus(str, Enum):
     pending = "pending"
     training = "training"
     completed = "completed"
     failed = "failed"
 
-class Model(Document , TimestampMixin):
-    user_id : PydanticObjectId
-    dataset_id : PydanticObjectId
-    name : str
-    algorithm : Algorithm
-    task_type : TaskType
-    target_column : Optional[str] = None
-    hyperparams : Optional[Dict] = None
-    train_samples : Optional[int] = None
-    test_samples : Optional[int] = None
-    metrics : Dict
-    file_path : str
-    status : ModelStatus = ModelStatus.pending
-    error_message: Optional[str] = None  # Add this field
+class Model(Document, TimestampMixin):
+    user_id: PydanticObjectId
+    dataset_id: PydanticObjectId
+    name: str
+    algorithm: Algorithm
+    task_type: TaskType
+    target_column: Optional[str] = None
+    features: List[str]
+    hyperparams: Optional[Dict] = None
+    preprocessing: Optional[Dict] = None
+    apply_pca: bool = True
+    metrics: Dict
+    file_path: str
+    status: ModelStatus = ModelStatus.pending
+    error_message: Optional[str] = None
 
     class Settings:
         name = "models"
-        indexes = ["user_id" , "dataset_id"]
+        indexes = ["user_id", "dataset_id"]
