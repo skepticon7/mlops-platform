@@ -74,8 +74,7 @@ class ModelService:
                 ModelsPageResponse(
                     id=str(model.id),
                     name=model.name,
-                    accuracy=model.metrics.get("accuracy") if model.algorithm in [
-                        Algorithm.logistic_regression] else None,
+                    accuracy=model.metrics.get("accuracy") if (model.metrics and "accuracy" in model.metrics) else None,
                     algorithm=model.algorithm,
                     status=model.status,
                     created_at=model.created_at
@@ -98,8 +97,7 @@ class ModelService:
             ModelsPageResponse(
                 id=str(model.id),
                 name=model.name,
-                accuracy=model.metrics.get("accuracy") if model.algorithm in [
-                    Algorithm.logistic_regression] else None,
+                accuracy=model.metrics.get("accuracy") if (model.metrics and "accuracy" in model.metrics) else None,
                 algorithm=model.algorithm,
                 status=model.status,
                 created_at=model.created_at
