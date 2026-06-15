@@ -62,15 +62,16 @@ export default function PlaygroundTab({model} : PlaygroundTabProps) {
             }));
         }catch (e: any) {
             const end = performance.now();
+            const errMsg = e?.response?.data?.message || e?.message || "Prediction failed";
             setResult({
                 loading: false,
-                error: e?.message || "Prediction failed",
+                error: errMsg,
                 status: e?.response?.status || null,
                 ms: Math.round(end - start),
                 data: null,
             });
             console.log(`Error Predicting : ${e}`);
-            toast.error(result.error || "failed to run prediction");
+            toast.error(errMsg);
         }finally {
             setResult((prev) => ({...prev , loading: false }))
         }
@@ -130,7 +131,7 @@ export default function PlaygroundTab({model} : PlaygroundTabProps) {
                 </div>
             </div>
             {model.algorithm === "logistic_regression" && <LogisticRegressionResult prediction={result as ClassificationState}/>}
-            {model.algorithm === "linear_regression" && <LinearRegressionResult prediction={result as RegressionState}/>}
+            {model.algorithm === "linear_regression" && <LinearRegressionResult prediction={result as RegressionState} model={model}/>}
             {model.algorithm === "kmeans" && <KmeansResult prediction={result as ClusteringState} />}
         </div>
     )

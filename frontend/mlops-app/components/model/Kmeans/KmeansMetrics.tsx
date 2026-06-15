@@ -25,7 +25,7 @@ export default function KmeansMetrics({model} : KmeansMetricsProps) {
             label: "Silhouette Score",
             value: metricsFormatted["silhouette_score"],
             sub: "Cluster separation quality",
-            level: model.metrics.silhouette_score > 0.5 ? 'high' : model.metrics.silhouette_score > 0.3 ? 'medium' : 'low'
+            level: (model.metrics?.silhouette_score ?? 0) > 0.5 ? 'high' : (model.metrics?.silhouette_score ?? 0) > 0.3 ? 'medium' : 'low'
         },
         {
             label: "Davies Bouldin",
@@ -44,10 +44,11 @@ export default function KmeansMetrics({model} : KmeansMetricsProps) {
         },
     ]
 
-    const featureNames = Object.keys(model.metrics.cluster_profiles['Cluster 0'])
-    const clusterProfiles = Object.entries(model.metrics.cluster_profiles)
-    const clusterSizes = Object.entries(model.metrics.cluster_sizes)
-    const total = model.dataset_details.total_rows
+    const firstClusterName = Object.keys(model.metrics?.cluster_profiles || {})[0];
+    const featureNames = firstClusterName ? Object.keys(model.metrics?.cluster_profiles?.[firstClusterName] || {}) : [];
+    const clusterProfiles = Object.entries(model.metrics?.cluster_profiles || {});
+    const clusterSizes = Object.entries(model.metrics?.cluster_sizes || {});
+    const total = model.dataset_details.total_rows;
 
     return(
         <>
@@ -70,7 +71,7 @@ export default function KmeansMetrics({model} : KmeansMetricsProps) {
                         <span className="text-[13px] font-medium text-text-primary">Cluster Profiles</span>
                         <span
                             className="inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-[11px] font-medium bg-cyan-500/10 text-cyan-400">
-                k = {model.hyperparams.n_clusters}
+                k = {model.metrics?.optimal_k ?? model.hyperparams?.n_clusters ?? clusterProfiles.length}
             </span>
                     </div>
                     <table className="w-full text-[12.5px] border-collapse">
@@ -88,7 +89,7 @@ export default function KmeansMetrics({model} : KmeansMetricsProps) {
                         </thead>
                         <tbody>
                         {clusterProfiles.map(([cluster, features], i) => {
-                            const size = model.metrics.cluster_sizes[cluster]
+                            const size = model.metrics?.cluster_sizes?.[cluster] ?? 0
                             const color = CLUSTER_COLORS[i % CLUSTER_COLORS.length]
                             return (
                                 <tr key={cluster}
@@ -144,10 +145,10 @@ export default function KmeansMetrics({model} : KmeansMetricsProps) {
                         <div
                             className="mt-4 px-3 py-2.5 bg-background-muted rounded-md text-[12px] text-text-tertiary">
                 <span className="text-cyan-400 font-semibold">
-                    Silhouette: {model.metrics.silhouette_score.toFixed(3)}
+                    Silhouette: {(model.metrics?.silhouette_score ?? 0).toFixed(3)}
                 </span>
                             {" · "}
-                            Inertia: {model.metrics.inertia?.toLocaleString(undefined, {maximumFractionDigits: 1})}
+                            Inertia: {model.metrics?.inertia?.toLocaleString(undefined, {maximumFractionDigits: 1}) ?? "N/A"}
                         </div>
                     </div>
                 </div>

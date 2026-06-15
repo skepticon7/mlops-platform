@@ -14,7 +14,6 @@ class Algorithm(str, Enum):
     linear_regression = "linear_regression"
     logistic_regression = "logistic_regression"
     kmeans = "kmeans"
-    pca = "pca"
 
 class ModelStatus(str, Enum):
     pending = "pending"
@@ -37,6 +36,8 @@ class Model(Document, TimestampMixin):
     file_path: str
     status: ModelStatus = ModelStatus.pending
     error_message: Optional[str] = None
+    train_samples: Optional[int] = None
+    test_samples: Optional[int] = None
 
     class Settings:
         name = "models"

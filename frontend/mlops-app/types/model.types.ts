@@ -63,6 +63,8 @@ export type LinearRegressionMetrics = {
     intercept?: number | null;
     train_r2: number;
     test_r2: number;
+    r2?: number;
+    mse?: number;
 }
 
 type LinearRegressionHyperparams = {
@@ -79,6 +81,7 @@ type ClusteringMetrics = {
     inertia: number;
     cluster_profiles : Record<string, Record<string, any>>
     cluster_sizes : Record<string, number>
+    optimal_k?: number;
 }
 
 type ClusteringHyperparams = {
@@ -131,8 +134,8 @@ export type ClassificationResponse = BasePredictionResponse & {
 
 export type LinearRegressionResponse = BasePredictionResponse & {
     type: "regression";
-    prediction: string;
-    ci: string[];
+    prediction: number;
+    ci: number[];
     pourcentage_ci: number;
 }
 

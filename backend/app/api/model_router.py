@@ -1,5 +1,6 @@
 
-from fastapi import APIRouter, Form, UploadFile, File, Depends , Query
+from typing import List
+from fastapi import APIRouter, Form, UploadFile, File, Depends, Query, Body
 import json
 import logging
 
@@ -8,7 +9,15 @@ from celery.result import AsyncResult
 
 from app.models.user import User
 from app.core.security import get_current_user
-from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse
+from app.schemas.model_schema import (
+    ModelCreate,
+    ModelResponse,
+    ModelsPageResponse,
+    ModelPaginationResponse,
+    ModelDetailsResponse,
+    PredictResponse,
+    PredictRequest,
+)
 from app.services.model_service import ModelService
 from app.services.training_service import TrainingService
 from app.core.celery_app import celery_app
@@ -37,6 +46,13 @@ async def get_models(
         page : int = Query(default=1 ,ge=1),
 ):
     models = await ModelService.get_models(user , page)
+    return models
+
+@router.get("/completedModels", response_model=List[ModelsPageResponse])
+async def get_completed_models(
+        user: User = Depends(get_current_user)
+):
+    models = await ModelService.get_completed_models(user)
     return models
 
 @router.delete("/deleteModel/{model_id}" , status_code=status.HTTP_204_NO_CONTENT)
@@ -83,3 +99,39 @@ async def get_task_status(
 
     return response
 
+
+@router.get("/getModel/{model_id}", response_model=ModelDetailsResponse)
+async def get_model(
+        model_id: str,
+        user: User = Depends(get_current_user),
+):
+    model = await ModelService.get_model(model_id, user)
+    return model
+
+
+@router.post("/predict/{model_id}", response_model=PredictResponse)
+async def predict(
+        model_id: str,
+        predict_request: PredictRequest = Body(...),
+        user: User = Depends(get_current_user),
+):
+    prediction = ModelService.predict(model_id, predict_request)
+
+    # Log the prediction in MongoDB for dashboard volume tracking
+    try:
+        from app.db.database import get_client
+        from app.core.config import DB_NAME
+        from datetime import datetime, timezone
+        from beanie import PydanticObjectId
+        client = get_client()
+        db = client[DB_NAME]
+        await db["prediction_logs"].insert_one({
+            "user_id": user.id,
+            "model_id": PydanticObjectId(model_id),
+            "timestamp": datetime.now(timezone.utc)
+        })
+    except Exception as e:
+        # Prevent logging failure from affecting the prediction output
+        logger.error(f"Failed to log prediction: {e}")
+
+    return prediction

@@ -20,13 +20,21 @@ class TrainingService:
         client = get_client()
 
         try:
-            async with await client.start_session() as session:
-                async with session.start_transaction():
-                    logger.info(f"Creating dataset for {file.filename}")
-                    dataset = await DatasetService.upload_dataset(file, user, session=session)
+            try:
+                async with await client.start_session() as session:
+                    async with session.start_transaction():
+                        logger.info(f"Creating dataset for {file.filename}")
+                        dataset = await DatasetService.upload_dataset(file, user, session=session)
 
-                    logger.info(f"Creating model for {model_data.name}")
-                    model = await ModelService.create_model(dataset.id, model_data, user, session=session)
+                        logger.info(f"Creating model for {model_data.name}")
+                        model = await ModelService.create_model(dataset.id, model_data, user, session=session)
+            except Exception as e:
+                if "transaction" in str(e).lower() or "replica set" in str(e).lower() or "not active" in str(e).lower():
+                    logger.info("Transactions not supported. Creating dataset and model without transaction.")
+                    dataset = await DatasetService.upload_dataset(file, user)
+                    model = await ModelService.create_model(dataset.id, model_data, user, session=None)
+                else:
+                    raise e
 
             task = train_model_task.delay(str(model.id))
 

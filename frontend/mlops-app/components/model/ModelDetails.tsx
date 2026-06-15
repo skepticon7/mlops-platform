@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from "react";
 import {statusBadge} from "@/components/models/StatusBadge";
-import {ArrowUpRight, Rocket} from "lucide-react";
+import {ArrowUpRight} from "lucide-react";
 import {useFetch} from "@/hooks/use-fetch";
 import {ModelDetailResponse} from "@/types/model.types";
 import {modelsService} from "@/services/models.service";
@@ -20,7 +20,6 @@ const ALGORITHM_LABEL: Record<string, string> = {
     logistic_regression: "Logistic Regression",
     linear_regression: "Linear Regression",
     kmeans: "KMeans",
-    pca: "PCA",
 }
 
 type Tab = "metrics" | "hyperparams" | "playground"
@@ -67,7 +66,7 @@ export default function ModelDetails({model_id , onBack} : ModelDetailsProps) {
     }
 
     if(error) {
-        <Error/>
+        return <Error/>;
     }
 
     if(!data) {
@@ -106,11 +105,6 @@ export default function ModelDetails({model_id , onBack} : ModelDetailsProps) {
                         className="inline-flex cursor-pointer items-center gap-[6px] px-[14px] py-[6px] rounded-[6px] text-[13px] font-medium bg-transparent text-white border border-[1px] border-secondary hover:bg-background-overlay transition-colors">
                         <ArrowUpRight size={14}/>
                         Export
-                    </button>
-                    <button
-                        className="inline-flex cursor-pointer items-center gap-[6px] px-[14px] py-[6px] rounded-[6px] text-[13px] font-medium bg-text-primary text-background hover:opacity-90 transition-opacity">
-                        <Rocket size={14}/>
-                        Deploy Model
                     </button>
                 </div>
             </div>

@@ -19,7 +19,8 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     root_mean_squared_error, mean_squared_error, mean_absolute_error, r2_score,
-    silhouette_score, davies_bouldin_score, calinski_harabasz_score
+    silhouette_score, davies_bouldin_score, calinski_harabasz_score,
+    confusion_matrix, classification_report
 )
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler, MinMaxScaler
 from sklearn.impute import SimpleImputer
@@ -38,7 +39,6 @@ ALGORITHM_MAP = {
     Algorithm.linear_regression: LinearRegression,
     Algorithm.logistic_regression: LogisticRegression,
     Algorithm.kmeans: KMeans,
-    Algorithm.pca: PCA,
 }
 
 MODEL_DIR = Path(__file__).parent.parent / "storage" / "models"
@@ -62,12 +62,20 @@ def get_valid_hyperparams(algorithm_class, hyperparams: dict | None) -> dict:
     filtered_params = {}
     for key, value in hyperparams.items():
         if key in valid_params:
-            # Convert string booleans to actual booleans
+            # Convert string booleans and numbers to their appropriate Python types
             if isinstance(value, str):
                 if value.lower() == 'true':
                     value = True
                 elif value.lower() == 'false':
                     value = False
+                else:
+                    try:
+                        value = int(value)
+                    except ValueError:
+                        try:
+                            value = float(value)
+                        except ValueError:
+                            pass
             filtered_params[key] = value
 
     return filtered_params
@@ -141,9 +149,28 @@ async def train_model_async(task, model_id: str):
     client = await init_beanie_for_task()
 
     model_file_path = None
+    train_samples = 0
+    test_samples = 0
+    residual_std = None
+    pca_transformer = None
     try:
-        async with await client.start_session() as session:
-            async with session.start_transaction():
+        try:
+            async with await client.start_session() as session:
+                async with session.start_transaction():
+                    ml_model = await Model.get(PydanticObjectId(model_id), session=session)
+                    print("model id : " + model_id)
+                    print(ml_model)
+                    if not ml_model:
+                        raise NotFoundException("Model not found")
+
+                    if ml_model.status != ModelStatus.pending:
+                        raise BadRequestException("Model is not in pending status")
+
+                    ml_model.status = ModelStatus.training
+                    await ml_model.save(session=session)
+        except Exception as e:
+            if "transaction" in str(e).lower() or "replica set" in str(e).lower() or "not active" in str(e).lower():
+                logger.info("Transactions not supported. Updating model status without transaction.")
                 ml_model = await Model.get(PydanticObjectId(model_id))
                 print("model id : " + model_id)
                 print(ml_model)
@@ -154,7 +181,9 @@ async def train_model_async(task, model_id: str):
                     raise BadRequestException("Model is not in pending status")
 
                 ml_model.status = ModelStatus.training
-                await ml_model.save(session=session)
+                await ml_model.save()
+            else:
+                raise e
 
         task.update_state(state="PROGRESS", meta={"progress": 10})
 
@@ -207,6 +236,21 @@ async def train_model_async(task, model_id: str):
         if ml_model.algorithm in [Algorithm.linear_regression, Algorithm.logistic_regression]:
             y = df[ml_model.target_column].copy()
 
+            if ml_model.algorithm == Algorithm.logistic_regression:
+                if pd.api.types.is_float_dtype(y):
+                    raise BadRequestException(
+                        message=f"Target column '{ml_model.target_column}' is continuous (float). "
+                                f"Logistic Regression is a classification algorithm. "
+                                f"For continuous targets, please use Linear Regression instead."
+                    )
+                unique_vals = y.nunique()
+                if unique_vals > 20 and not (y.dtype == "object" or y.dtype.name == "category"):
+                    raise BadRequestException(
+                        message=f"Target column '{ml_model.target_column}' has {unique_vals} unique values. "
+                                f"Logistic Regression is a classification algorithm. "
+                                f"For numeric continuous targets like prices or counts, please use Linear Regression instead."
+                    )
+
             target_encoder = None
 
             if y.dtype == "object" or y.dtype.name == "category":
@@ -216,6 +260,8 @@ async def train_model_async(task, model_id: str):
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, random_state=42
             )
+            train_samples = len(X_train)
+            test_samples = len(X_test)
 
             task.update_state(state="PROGRESS", meta={"progress": 40, "status": "training"})
 
@@ -234,22 +280,84 @@ async def train_model_async(task, model_id: str):
             y_pred = model.predict(X_test_transformed)
 
             if ml_model.algorithm == Algorithm.logistic_regression:
+                report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
+                per_class = {}
+                classes = model.classes_
+
+                if target_encoder:
+                    decoded_classes = target_encoder.inverse_transform(classes)
+                    class_map = {str(enc): str(dec) for enc, dec in zip(classes, decoded_classes)}
+                else:
+                    class_map = {str(c): str(c) for c in classes}
+
+                for k, v in report.items():
+                    if k in class_map:
+                        per_class[class_map[k]] = {
+                            "precision": float(v.get("precision", 0.0)),
+                            "recall": float(v.get("recall", 0.0)),
+                            "f1-score": float(v.get("f1-score", 0.0)),
+                            "support": int(v.get("support", 0)),
+                        }
+
+                cm = confusion_matrix(y_test, y_pred, labels=classes).tolist()
+                if target_encoder:
+                    cm_labels = [str(c) for c in decoded_classes]
+                else:
+                    cm_labels = [str(c) for c in classes]
+
                 metrics = {
                     "accuracy": float(accuracy_score(y_test, y_pred)),
                     "precision": float(precision_score(y_test, y_pred, average="weighted", zero_division=0)),
                     "recall": float(recall_score(y_test, y_pred, average="weighted", zero_division=0)),
                     "f1": float(f1_score(y_test, y_pred, average="weighted", zero_division=0)),
+                    "confusion_matrix": cm,
+                    "confusion_matrix_labels": cm_labels,
+                    "per_class": per_class
                 }
             elif ml_model.algorithm == Algorithm.linear_regression:
+                y_train_pred = model.predict(X_train_transformed)
+                train_mse = mean_squared_error(y_train, y_train_pred)
+                train_r2 = r2_score(y_train, y_train_pred)
+                test_mse = mean_squared_error(y_test, y_pred)
+                test_r2 = r2_score(y_test, y_pred)
+                rmse = root_mean_squared_error(y_test, y_pred)
+                mae = mean_absolute_error(y_test, y_pred)
+
+                # Compute residual standard deviation
+                residuals = y_train - y_train_pred
+                residual_std = float(np.std(residuals))
+
+                intercept = float(model.intercept_) if hasattr(model, "intercept_") else 0.0
+                coef_norm = float(np.linalg.norm(model.coef_)) if hasattr(model, "coef_") else 0.0
+
+                try:
+                    feature_names = preprocessor.get_feature_names_out()
+                except:
+                    feature_names = [f"f_{i}" for i in range(len(model.coef_))]
+
+                coef_abs = np.abs(model.coef_)
+                importance = coef_abs / (coef_abs.max() + 1e-8)
+                s = pd.Series(importance, index=feature_names)
+                feature_importance = s.nlargest(5)
+                features_importance_dict = {str(k): float(v) for k, v in feature_importance.items()}
+
                 metrics = {
-                    "mse": float(mean_squared_error(y_test, y_pred)),
-                    "rmse": float(root_mean_squared_error(y_test, y_pred)),
-                    "mae": float(mean_absolute_error(y_test, y_pred)),
-                    "r2": float(r2_score(y_test, y_pred)),
+                    "accuracy": max(0.0, float(test_r2)),
+                    "test_mse": float(test_mse),
+                    "train_mse": float(train_mse),
+                    "rmse": float(rmse),
+                    "mae": float(mae),
+                    "coef_norm": float(coef_norm),
+                    "intercept": intercept,
+                    "test_r2": float(test_r2),
+                    "train_r2": float(train_r2),
+                    "features_importance": features_importance_dict
                 }
 
         else:
             target_encoder = None
+            train_samples = len(X)
+            test_samples = 0
 
             task.update_state(state="PROGRESS", meta={"progress": 40, "status": "training"})
 
@@ -262,11 +370,16 @@ async def train_model_async(task, model_id: str):
                 if ml_model.apply_pca:
                     pca = PCA(n_components=0.9)
                     X_transformed = pca.fit_transform(X_transformed)
+                    pca_transformer = pca
 
                 # Auto-select optimal k if n_clusters was not provided
                 if "n_clusters" not in valid_hyperparams or valid_hyperparams.get("n_clusters") is None:
                     raw_hyperparams = ml_model.hyperparams or {}
-                    max_k = min(raw_hyperparams.get("max_k", 10), len(X_transformed) - 1)
+                    try:
+                        max_k = int(raw_hyperparams.get("max_k", 10))
+                    except (ValueError, TypeError):
+                        max_k = 10
+                    max_k = min(max_k, len(X_transformed) - 1)
                     # Remove max_k from hyperparams since KMeans doesn't accept it
                     valid_hyperparams.pop("max_k", None)
 
@@ -293,25 +406,15 @@ async def train_model_async(task, model_id: str):
 
                 task.update_state(state="PROGRESS", meta={"progress": 70, "status": "evaluating"})
 
-                metrics = {
-                    "optimal_k": int(model.n_clusters),
-                    "silhouette_score": float(silhouette_score(X_transformed, labels)),
-                    "davies_bouldin_score": float(davies_bouldin_score(X_transformed, labels)),
-                    "calinski_harabasz_score": float(calinski_harabasz_score(X_transformed, labels)),
-                }
-            elif ml_model.algorithm == Algorithm.pca:
-                model = algorithm_class(**valid_hyperparams)
-                model.fit(X_transformed)
-
-                explained_ratio = model.explained_variance_ratio_
-
-                metrics = {
-                    "explained_variance_ratio": explained_ratio.tolist(),
-                    "cumulative_variance_ratio": np.cumsum(explained_ratio).tolist(),
-                    "n_components": int(model.n_components_),
-                    "explained_variance": model.explained_variance_.tolist(),
-                    "singular_values": model.singular_values_.tolist(),
-                }
+                from app.utils.ModelUtils import evaluate_clustering
+                metrics = evaluate_clustering(
+                    model=model,
+                    X_transformed=X_transformed,
+                    X_raw=X.values,
+                    feature_names=ml_model.features
+                )
+                metrics["optimal_k"] = int(model.n_clusters)
+                metrics["accuracy"] = max(0.0, float(metrics.get("silhouette_score", 0.0) or 0.0))
 
         task.update_state(state="PROGRESS", meta={"progress": 90, "status": "saving"})
 
@@ -325,15 +428,32 @@ async def train_model_async(task, model_id: str):
             "categorical_cols": categorical_cols,
             "numerical_cols": numerical_cols,
             "algorithm": ml_model.algorithm.value,
+            "residual_std": residual_std,
+            "pca_transformer": pca_transformer,
         }, model_file_path)
 
-        async with await client.start_session() as session:
-            async with session.start_transaction():
+        try:
+            async with await client.start_session() as session:
+                async with session.start_transaction():
+                    ml_model.status = ModelStatus.completed
+                    ml_model.metrics = metrics
+                    ml_model.file_path = str(model_file_path)
+                    ml_model.train_samples = train_samples
+                    ml_model.test_samples = test_samples
+                    ml_model.updated_at = datetime.now(timezone.utc)
+                    await ml_model.save(session=session)
+        except Exception as e:
+            if "transaction" in str(e).lower() or "replica set" in str(e).lower() or "not active" in str(e).lower():
+                logger.info("Transactions not supported. Saving completed model details without transaction.")
                 ml_model.status = ModelStatus.completed
                 ml_model.metrics = metrics
                 ml_model.file_path = str(model_file_path)
+                ml_model.train_samples = train_samples
+                ml_model.test_samples = test_samples
                 ml_model.updated_at = datetime.now(timezone.utc)
-                await ml_model.save(session=session)
+                await ml_model.save()
+            else:
+                raise e
 
         task.update_state(state="SUCCESS", meta={"progress": 100, "status": "completed"})
 

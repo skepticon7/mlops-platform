@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { Brain, Rocket, Terminal, Activity } from "lucide-react"
+import { Brain, Terminal, Activity } from "lucide-react"
 
 const ACTIONS = [
     {
@@ -11,14 +11,6 @@ const ACTIONS = [
         title: "Train a Model",
         desc: "Pick a dataset & algorithm to fit",
         path: "/models/new",
-    },
-    {
-        icon: <Rocket size={18} />,
-        bg: "rgba(0,112,243,.12)",
-        color: "text-[#0070f3]",
-        title: "Deploy a Model",
-        desc: "Expose any ready model as an API",
-        path: "/deployments",
     },
     {
         icon: <Terminal size={18} />,
@@ -42,12 +34,12 @@ export default function QuickActions() {
     const router = useRouter()
 
     return (
-        <div className="grid grid-cols-2 grid-rows-2 gap-[12px]">
+        <div className="grid grid-cols-1 gap-[10px]">
             {ACTIONS.map((q) => (
                 <div
                     key={q.title}
                     onClick={() => router.push(q.path)}
-                    className="bg-background-subtle border border-border rounded-lg p-[18px] cursor-pointer transition-colors duration-120 flex flex-col gap-3 justify-between hover:border-border-strong hover:bg-white/5 group"
+                    className="bg-background-subtle border border-border rounded-lg px-4 py-3 cursor-pointer transition-colors duration-120 flex flex-row items-center gap-4 hover:border-border-strong hover:bg-white/5 group"
                 >
                     <div
                         className={`w-9 h-9 rounded-[9px] flex items-center justify-center shrink-0 ${q.color}`}
@@ -56,10 +48,10 @@ export default function QuickActions() {
                         {q.icon}
                     </div>
                     <div>
-                        <div className="text-[13.5px] font-semibold mb-[3px] text-text-primary group-hover:text-white transition-colors">
+                        <div className="text-[13.5px] font-semibold text-text-primary group-hover:text-white transition-colors">
                             {q.title}
                         </div>
-                        <div className="text-[12px] text-text-tertiary leading-[1.5]">
+                        <div className="text-[12px] text-text-tertiary mt-[2px]">
                             {q.desc}
                         </div>
                     </div>

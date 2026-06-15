@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from fastapi import Request , FastAPI
 from fastapi.responses import JSONResponse
@@ -7,6 +8,8 @@ from app.core.exceptions import (
     UnauthorizedException,
 )
 from fastapi.exceptions import RequestValidationError
+
+logger = logging.getLogger(__name__)
 
 def register_exception_handlers(app : FastAPI):
 
@@ -54,6 +57,7 @@ def register_exception_handlers(app : FastAPI):
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request : Request , exception : Exception):
+        logger.error(f"Global exception caught: {exception}", exc_info=True)
         return JSONResponse(
             status_code=500,
             content=_body(500 , "Internal Server Error" , request)

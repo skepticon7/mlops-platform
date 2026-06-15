@@ -50,7 +50,7 @@ export default function Sidebar() {
                     Models
                 </div>
                 {navItem("All Models", <Brain size={14} />, "/models")}
-                {navItem("Train New Model", <Plus size={14} />, "/dashboard/models/new")}
+                {navItem("Train New Model", <Plus size={14} />, "/models/new")}
 
                 <div className="text-[11px] font-semibold text-text-tertiary uppercase tracking-[.09em] px-[10px] pt-[14px] pb-[5px]">
                     Space

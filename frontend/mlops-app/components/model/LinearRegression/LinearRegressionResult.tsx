@@ -1,11 +1,12 @@
-import {PredictState, RegressionState} from "@/types/model.types";
+import {PredictState, RegressionState, ModelDetailResponse} from "@/types/model.types";
 import {Loader2, Terminal} from "lucide-react";
 
 interface LinearRegressionResultProps {
     prediction: RegressionState;
+    model: ModelDetailResponse;
 }
 
-export default function LinearRegressionResult({prediction} : LinearRegressionResultProps) {
+export default function LinearRegressionResult({prediction, model} : LinearRegressionResultProps) {
     return (
         <div className='rounded-lg border border-border overflow-hidden min-h-[260px]'>
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
@@ -38,8 +39,8 @@ export default function LinearRegressionResult({prediction} : LinearRegressionRe
                 {prediction.data && !prediction.loading && (
                     <div className="space-y-5">
                         <div>
-                            <p className="text-[10px] uppercase tracking-[.07em] text-text-tertiary mb-1.5">Predicted Price</p>
-                            <p className="text-[32px] font-bold font-mono text-blue-400">${Number(prediction.data.prediction).toLocaleString()}</p>
+                            <p className="text-[10px] uppercase tracking-[.07em] text-text-tertiary mb-1.5">Predicted {model.target_column || "Value"}</p>
+                            <p className="text-[32px] font-bold font-mono text-blue-400">{Number(prediction.data.prediction).toLocaleString()}</p>
                             <p className="text-[12px] text-text-tertiary mt-1">{prediction.data.pourcentage_ci}% CI: {prediction.data.ci[0]} – {prediction.data.ci[1]} · {prediction.ms}ms</p>
                         </div>
                         <div className="border-t border-border pt-4">

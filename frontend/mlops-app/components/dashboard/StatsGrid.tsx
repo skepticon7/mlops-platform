@@ -2,7 +2,7 @@
 
 import {
     Brain,
-    Rocket,
+    Database,
     Activity,
     BarChart2,
     TrendingUp,
@@ -24,11 +24,11 @@ const STATS = [
         color: "#a78bfa",
     },
     {
-        label: "Active Deployments",
+        label: "Datasets Uploaded",
         key: "active_deployments" as const,
-        change: "All systems operational",
+        change: "From local storage",
         up: true,
-        icon: <Rocket size={52} />,
+        icon: <Database size={52} />,
         color: "#38bdf8",
     },
     {

@@ -35,10 +35,46 @@ class AnalyticsService:
                 )
             )
 
-        # Mock data for features not yet in DB schema
-        active_deployments = 0
-        total_predictions = "0"
-        prediction_volume = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        # Retrieve actual uploaded datasets count
+        from app.models.dataset import Dataset
+        datasets_count = await Dataset.find({"user_id": PydanticObjectId(user_id)}).count()
+
+        # Retrieve actual prediction counts and volume (past 12 days)
+        from app.db.database import get_client
+        from app.core.config import DB_NAME
+        from datetime import datetime, timezone, timedelta
+
+        client = get_client()
+        db = client[DB_NAME]
+        user_pydantic_id = PydanticObjectId(user_id)
+
+        total_preds = await db["prediction_logs"].count_documents({"user_id": user_pydantic_id})
+        total_predictions = str(total_preds)
+
+        # Get date range for the past 12 days
+        today = datetime.now(timezone.utc).date()
+        cutoff_date = today - timedelta(days=11)
+        cutoff_dt = datetime.combine(cutoff_date, datetime.min.time(), tzinfo=timezone.utc)
+
+        # Query and aggregate in Python to optimize database query to 1 roundtrip
+        cursor = db["prediction_logs"].find({
+            "user_id": user_pydantic_id,
+            "timestamp": {"$gte": cutoff_dt}
+        })
+
+        volume_dict = {today - timedelta(days=i): 0 for i in range(12)}
+        async for log in cursor:
+            # Safe naive/aware UTC date extraction
+            log_dt = log["timestamp"]
+            if log_dt.tzinfo is None:
+                log_dt = log_dt.replace(tzinfo=timezone.utc)
+            log_date = log_dt.astimezone(timezone.utc).date()
+            if log_date in volume_dict:
+                volume_dict[log_date] += 1
+
+        prediction_volume = [volume_dict[today - timedelta(days=i)] for i in range(11, -1, -1)]
+
+        active_deployments = datasets_count
         recent_deployments = []
 
         return DashboardMetricsResponse(

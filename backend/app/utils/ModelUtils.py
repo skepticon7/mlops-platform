@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import Ridge, LinearRegression, LogisticRegression
@@ -26,7 +25,6 @@ ALGORITHM_MAP = {
     Algorithm.linear_regression: LinearRegression,
     Algorithm.logistic_regression: LogisticRegression,
     Algorithm.kmeans: KMeans,
-    Algorithm.pca: PCA,
 }
 
 
@@ -53,14 +51,23 @@ def get_valid_hyperparams(algorithm_class, hyperparams: dict | None) -> dict:
 
 
 def load_model(model_id: str):
-        if model_id in MODEL_CACHE:
-            return MODEL_CACHE[model_id]
+        path = DATASET_DIR / f"{model_id}.joblib"
+        if not path.exists():
+            raise NotFoundException(f"Model {model_id} not found")
 
-        path = f"{DATASET_DIR}/{model_id}.joblib"
+        try:
+            mtime = path.stat().st_mtime
+        except Exception:
+            mtime = 0
+
+        if model_id in MODEL_CACHE:
+            cached_bundle, cached_mtime = MODEL_CACHE[model_id]
+            if cached_mtime == mtime:
+                return cached_bundle
 
         try:
             bundle = joblib.load(path)
-            MODEL_CACHE[model_id] = bundle
+            MODEL_CACHE[model_id] = (bundle, mtime)
             return bundle
         except Exception:
             raise NotFoundException(f"Model {model_id} not found")

@@ -11,6 +11,13 @@ export default function PredictionVolume({
     totalPredictions,
     volume,
 }: PredictionVolumeProps) {
+    const maxVal = Math.max(...volume, 0);
+    const getBarHeight = (val: number) => {
+        if (maxVal === 0) return 5;
+        const pct = (val / maxVal) * 100;
+        return Math.max(5, pct);
+    };
+
     return (
         <div className="bg-background-subtle border border-border rounded-lg flex flex-col">
             <div className="px-5 py-[14px] border-b border-border flex items-center justify-between">
@@ -26,7 +33,7 @@ export default function PredictionVolume({
             <div className="p-5">
                 <div className="mb-[14px]">
                     <span className="text-[24px] font-bold tracking-[-.02em] text-text-primary">
-                        {totalPredictions === "0" ? "0" : "12,431"}
+                        {Number(totalPredictions).toLocaleString()}
                     </span>
                     <span className="inline-flex items-center gap-[3px] text-[12px] text-success ml-2">
                         <TrendingUp size={11} />
@@ -45,9 +52,10 @@ export default function PredictionVolume({
                             className={`flex-1 rounded-t border-b hover:opacity-75 transition-opacity cursor-default ${
                                 i === volume.length - 1
                                     ? "bg-accent border-transparent"
-                                    : "bg-background-overlay border-border-strong border-[1px]"
+                                     : "bg-background-overlay border-border-strong border-[1px]"
                             }`}
-                            style={{ height: `${v === 0 ? 5 : v}%` }}
+                            style={{ height: `${getBarHeight(v)}%` }}
+                            title={`${v} predictions`}
                         />
                     ))}
                 </div>

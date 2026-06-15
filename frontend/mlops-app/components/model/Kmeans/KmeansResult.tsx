@@ -44,7 +44,7 @@ export default function KmeansResult({prediction} : KmeansResultProps) {
                         </div>
                         <div>
                             <p className="text-[10px] uppercase tracking-[.07em] text-text-tertiary mb-3">DISTANCE TO CENTROIDS</p>
-                            {Object.entries(prediction.data.distances).map(([cls, prob]: [string, number]) => (
+                            {prediction.data.distances && Object.entries(prediction.data.distances).map(([cls, prob]: [string, number]) => (
                                 <div key={cls} className="mb-3">
                                     <div className="flex justify-between text-[12px] mb-1.5">
                                         <span className="font-mono text-text-secondary">{cls}</span>

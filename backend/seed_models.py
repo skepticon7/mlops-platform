@@ -11,6 +11,7 @@ from beanie import PydanticObjectId
 
 async def seed_data():
     client = AsyncIOMotorClient(MONGO_URI)
+    await client[DB_NAME]["models"].delete_many({"algorithm": "pca"})
     await init_beanie(database=client[DB_NAME], document_models=[User, Model])
     
     users = await User.find_all().to_list()
@@ -64,26 +65,11 @@ async def seed_data():
             status=ModelStatus.completed
         )
         
-        # Needs a 4th model (maybe failed/pending) to show "4 models trained"
-        m4 = Model(
-            user_id=user.id,
-            dataset_id=PydanticObjectId(),
-            name="Image ResNet Draft",
-            algorithm=Algorithm.pca,
-            task_type=TaskType.unsupervised,
-            features=["pixels"],
-            metrics={},
-            file_path="dummy/path/pca.pkl",
-            status=ModelStatus.failed,
-            error_message="OOM during training"
-        )
-
         await m1.insert()
         await m2.insert()
         await m3.insert()
-        await m4.insert()
         
-    print("Successfully inserted 4 mock models for all users!")
+    print("Successfully inserted 3 mock models for all users!")
 
 if __name__ == "__main__":
     asyncio.run(seed_data())

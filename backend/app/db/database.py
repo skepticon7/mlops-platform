@@ -12,6 +12,8 @@ _client: Optional[AsyncIOMotorClient] = None
 async def init_db():
     global _client
     _client = AsyncIOMotorClient(MONGO_URI)
+    # Clean up legacy PCA models from database to avoid enum validation crashes
+    await _client[DB_NAME]["models"].delete_many({"algorithm": "pca"})
     await init_beanie(
         database=_client[DB_NAME],
         document_models=[User, Model, Dataset, BlacklistedToken]

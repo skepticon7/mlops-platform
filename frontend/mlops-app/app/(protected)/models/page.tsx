@@ -112,7 +112,7 @@ export default function ModelsPage() {
                                 </thead>
                                 <tbody>
                                 {models.map((m: ModelResponse , index : number) => (
-                                    <ModelRow key={index} onView={() => setSelectedModel({id: m.id , name: m.name})} index={index} total={total} row={m} onDelete={handleDelete} />
+                                    <ModelRow key={index} onView={() => setSelectedModel({id: m.id , name: m.name})} index={index} total={models.length} row={m} onDelete={handleDelete} />
                                 ))}
                                 </tbody>
                             </table>

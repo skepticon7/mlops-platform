@@ -16,7 +16,7 @@ export default function LinearRegMetrics({model} : LinearRegressionMetricsProps)
                 label: "R² Score",
                 value: metricsFormatted["test_r2"],
                 sub: "Test set performance",
-                level: model.metrics.test_r2 > 0.75 ? "high" : model.metrics.test_r2 > 0.6 ? "medium" : "low"
+                level: (model.metrics?.test_r2 ?? 0) > 0.75 ? "high" : (model.metrics?.test_r2 ?? 0) > 0.6 ? "medium" : "low"
             },
             {
                 label: "RMSE",
@@ -57,7 +57,7 @@ export default function LinearRegMetrics({model} : LinearRegressionMetricsProps)
                 <div className="p-5 space-y-6">
                     <div className="grid grid-cols-4 gap-4">
                         {[
-                            ["TRAIN R²", metricsFormatted["train_mse"]],
+                            ["TRAIN R²", metricsFormatted["train_r2"]],
                             ["TRAIN MSE", metricsFormatted["train_mse"]],
                             ["INTERCEPT", metricsFormatted["intercept"]],
                             ["COEF. NORM", metricsFormatted["coef_norm"]],
@@ -80,7 +80,7 @@ export default function LinearRegMetrics({model} : LinearRegressionMetricsProps)
                                 <div className="h-1.5 rounded-full bg-border overflow-hidden">
                                     <div
                                         className="h-full rounded-full bg-blue-400 transition-all"
-                                        style={{width: `${f.importance}%`}}
+                                        style={{width: f.importance}}
                                     />
                                 </div>
                             </div>

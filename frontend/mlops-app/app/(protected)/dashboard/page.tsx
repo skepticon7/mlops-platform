@@ -9,7 +9,6 @@ import StatsGrid from "@/components/dashboard/StatsGrid"
 import PredictionVolume from "@/components/dashboard/PredictionVolume"
 import QuickActions from "@/components/dashboard/QuickActions"
 import AccuracyLeaderboard from "@/components/dashboard/AccuracyLeaderboard"
-import RecentDeployments from "@/components/dashboard/RecentDeployments"
 
 export default function DashboardPage() {
     const { user } = useAuth()
@@ -64,10 +63,9 @@ export default function DashboardPage() {
                 <QuickActions />
             </div>
 
-            {/* Bottom Section: Accuracy + Deployments */}
-            <div className="grid grid-cols-2 gap-[20px] pb-8">
+            {/* Bottom Section: Accuracy Leaderboard */}
+            <div className="pb-8">
                 <AccuracyLeaderboard items={metrics.accuracy_leaderboard} />
-                <RecentDeployments deployments={metrics.recent_deployments} />
             </div>
         </div>
     )

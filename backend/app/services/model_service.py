@@ -12,13 +12,13 @@ import logging
 
 from app.core.exceptions import NotFoundException, UnauthorizedException, BadRequestException
 from app.db.database import get_client
-from app.models.dataset import Dataset
+from app.models.dataset import Dataset, DatasetColumnInfo, ColumnType
 from app.schemas.dataset_schema import DatasetRowCountProjection
 from app.schemas.model_schema import ModelCreate, ModelResponse, ModelsPageResponse, ModelPaginationResponse, \
     ModelDetailsResponse, DatasetDetails, PredictRequest, PredictResponse, ClassificationResponse, RegressionResponse, \
     ClusteringResponse
 from app.models.user import User
-from app.models.model import Model, Algorithm
+from app.models.model import Model, Algorithm, ModelStatus
 from beanie.operators import In
 
 from app.utils.ModelUtils import load_model
@@ -46,7 +46,7 @@ class ModelService:
 
             algorithm=model_data.algorithm,
             task_type=model_data.task_type,
-            features=[col.name for col in dataset.columns if col.name != model_data.target_column],
+            features=[col.name for col in dataset.columns if col.name != model_data.target_column and col.is_valid_feature],
             target_column=model_data.target_column,
             hyperparams=model_data.hyperparams,
             metrics={},
@@ -88,6 +88,26 @@ class ModelService:
         )
 
     @staticmethod
+    async def get_completed_models(user: User):
+        query = Model.find(
+            Model.user_id == PydanticObjectId(user.id),
+            Model.status == ModelStatus.completed
+        )
+        models = await query.to_list()
+        return [
+            ModelsPageResponse(
+                id=str(model.id),
+                name=model.name,
+                accuracy=model.metrics.get("accuracy") if model.algorithm in [
+                    Algorithm.logistic_regression] else None,
+                algorithm=model.algorithm,
+                status=model.status,
+                created_at=model.created_at
+            )
+            for model in models
+        ]
+
+    @staticmethod
     async def delete_model(model_id: str, user: User):
         model = await Model.find_one(
             Model.id == PydanticObjectId(model_id),
@@ -101,16 +121,21 @@ class ModelService:
             raise NotFoundException(message="Dataset not found")
 
         client = get_client()
-        async with await client.start_session() as session:
-            async with session.start_transaction():
-                try:
+        try:
+            async with await client.start_session() as session:
+                async with session.start_transaction():
                     logger.info(f"Deleting dataset {dataset.id}")
                     await dataset.delete(session=session)
                     logger.info(f"Deleting model {model_id}")
                     await model.delete(session=session)
-                except Exception as e:
-                    logger.error(f"Transaction failed, rolling back: {e}")
-                    raise e
+        except Exception as e:
+            if "transaction" in str(e).lower() or "replica set" in str(e).lower() or "not active" in str(e).lower():
+                logger.info("Transactions not supported. Deleting without transaction.")
+                await dataset.delete()
+                await model.delete()
+            else:
+                logger.error(f"Deletion failed: {e}")
+                raise e
 
         logger.info("Deleting dataset file")
         Path(dataset.file_path).unlink(missing_ok=True)
@@ -121,26 +146,40 @@ class ModelService:
     async def get_model(model_id: str, user: User):
 
         model = await Model.find_one(Model.id == PydanticObjectId(model_id))
-        dataset = await Dataset.find_one(Dataset.id == model.dataset_id).project(DatasetRowCountProjection)
-
         if not model:
             raise NotFoundException(message="Model not found")
 
+        dataset = await Dataset.find_one(Dataset.id == model.dataset_id)
+
         if not dataset:
-            raise NotFoundException(message="Dataset not found")
-
-        dataset_details = DatasetDetails(
-            total_rows=dataset.row_count,
-            total_features=len(dataset.columns),
-            target_column=model.target_column,
-            train_samples=model.train_samples,
-            test_samples=model.test_samples
-        )
-
-        clean_features = [
-            f for f in dataset.columns
-            if f.name != model.target_column and f.is_valid_feature
-        ]
+            dataset_details = DatasetDetails(
+                total_rows=(model.train_samples or 0) + (model.test_samples or 0),
+                total_features=len(model.features),
+                target_column=model.target_column,
+                train_samples=model.train_samples or 0,
+                test_samples=model.test_samples or 0
+            )
+            clean_features = [
+                DatasetColumnInfo(
+                    name=f,
+                    dType=ColumnType.numeric,
+                    example=None,
+                    is_valid_feature=True
+                )
+                for f in model.features
+            ]
+        else:
+            dataset_details = DatasetDetails(
+                total_rows=dataset.row_count,
+                total_features=len(dataset.columns),
+                target_column=model.target_column,
+                train_samples=model.train_samples or 0,
+                test_samples=model.test_samples or 0
+            )
+            clean_features = [
+                f for f in dataset.columns
+                if f.name != model.target_column and f.is_valid_feature
+            ]
 
         return ModelDetailsResponse(
             id= str(model.id),
@@ -166,6 +205,7 @@ class ModelService:
         algorithm = Algorithm(bundle["algorithm"])
         preprocessor = bundle["preprocessor"]
         features = bundle["features"]
+        pca_transformer = bundle.get("pca_transformer")
 
         try:
             df = pd.DataFrame([request.features])[features]
@@ -173,6 +213,8 @@ class ModelService:
             raise BadRequestException(message="invalid input features")
 
         X = preprocessor.transform(df)
+        if pca_transformer:
+            X = pca_transformer.transform(X)
         preds = model.predict(X)
 
 
@@ -180,13 +222,22 @@ class ModelService:
 
             probs = model.predict_proba(X)[0]
             classes = model.classes_
+            target_encoder = bundle.get("target_encoder") or bundle.get("label_encoder")
 
-            probabilities = {
-                str(c): round(float(p), 2)
-                for c, p in zip(classes, probs)
-            }
+            if target_encoder:
+                decoded_classes = target_encoder.inverse_transform(classes)
+                probabilities = {
+                    str(c): round(float(p), 2)
+                    for c, p in zip(decoded_classes, probs)
+                }
+                prediction = decoded_classes[int(np.argmax(probs))]
+            else:
+                probabilities = {
+                    str(c): round(float(p), 2)
+                    for c, p in zip(classes, probs)
+                }
+                prediction = classes[int(np.argmax(probs))]
 
-            prediction = classes[int(np.argmax(probs))]
             confidence = round(float(np.max(probs)), 2)
 
 
@@ -198,8 +249,8 @@ class ModelService:
                 probabilities=probabilities
             )
 
-        if request.algorithm == Algorithm.linear_regression:
-            pred = float(np.expm1(preds[0]))  # only if log-trained
+        elif algorithm == Algorithm.linear_regression:
+            pred = float(preds[0])
 
             error = 1.96 * sigma if sigma else 0
 
@@ -216,7 +267,7 @@ class ModelService:
                 pourcentage_ci=pourcentage_ci
             )
 
-        if algorithm == Algorithm.kmeans:
+        elif algorithm == Algorithm.kmeans:
             cluster = int(model.predict(X)[0])
 
             raw_distances = {}
@@ -244,11 +295,7 @@ class ModelService:
                 distances=distances
             )
 
-
-        return PredictResponse(
-            model_id=str(model_id),
-            predictions=preds.tolist()
-        )
+        raise BadRequestException(message=f"Prediction not supported for algorithm: {algorithm}")
 
 
 

@@ -1,32 +1,29 @@
 import {ModelResponse} from "@/types/model.types";
 import {statusBadge} from "@/components/models/StatusBadge";
-import {Eye, Rocket, Trash2} from "lucide-react";
+import {Eye, Trash2} from "lucide-react";
 
 
 const TASK_MAP = {
     "logistic_regression" : "Classification",
     "linear_regression" : "Regression",
     "kmeans" : "Clustering",
-    "pca" : "Dimensionality Reduction"
 }
 
 const ALGORITHM = {
     "logistic_regression" : "Logistic Regression",
     "linear_regression" : "Linear Regression",
     "kmeans" : "KMeans",
-    "pca" : "PCA"
 }
 
 interface ModelRowProps {
     row : ModelResponse,
     onView : (model : string) => void,
-    onDeploy? : (model : ModelResponse) => void,
     onDelete? : (model : ModelResponse) => void,
     index : number,
     total : number
 }
 
-export default function ModelRow({row , onView , onDeploy , onDelete , index , total} : ModelRowProps) {
+export default function ModelRow({row , onView , onDelete , index , total} : ModelRowProps) {
 
     const isLast = index === total - 1
     const borderClass = isLast ? "" : "border-b border-border"
@@ -70,12 +67,7 @@ export default function ModelRow({row , onView , onDeploy , onDelete , index , t
                     >
                         <Eye size={13}/>View
                     </button>
-                    <button
-                        // disabled={m.status !== "ready"}
-                        className="inline-flex cursor-pointer items-center gap-1.5 px-2 py-1 rounded-md text-[12px] text-text-primary border border-border-strong hover:bg-background-overlay transition-colors disabled:opacity-45 disabled:pointer-events-none"
-                    >
-                        <Rocket size={13}/>Deploy
-                    </button>
+
                     <button
                         onClick={() => onDelete?.(row)}
                         className="inline-flex cursor-pointer items-center p-1.5 rounded-md text-text-secondary hover:bg-background-overlay transition-colors"
